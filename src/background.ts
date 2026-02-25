@@ -2,6 +2,15 @@ import { SessionEvent } from "./shared/types";
 
 const generatingTabs = new Set<number>();
 
+// Accept keepalive ports from content scripts.
+// When the extension reloads the port disconnects, which content scripts
+// use as a signal to stop their MutationObserver and clean up.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === "microreel-keepalive") {
+    port.onDisconnect.addListener(() => void 0);
+  }
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.kind !== "MICROREEL_EVENT") {
     return;

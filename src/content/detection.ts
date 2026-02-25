@@ -7,6 +7,7 @@ interface DetectionCallbacks {
   onSubmitted(): void;
   onGeneratingStart(): void;
   onGeneratingStop(): void;
+  onError(error: unknown): void;
 }
 
 export class GenerationDetector {
@@ -58,24 +59,34 @@ export class GenerationDetector {
 
   private attachObserver(): void {
     this.observer = new MutationObserver(() => {
-      const isGenerating = detectGenerating(this.adapter);
+      try {
+        const isGenerating = detectGenerating(this.adapter);
 
-      if (isGenerating && this.state !== "generating") {
-        this.state = "generating";
-        this.callbacks.onGeneratingStart();
-        return;
-      }
-
-      if (!isGenerating && this.state === "generating") {
-        if (this.settleTimer !== null) {
-          window.clearTimeout(this.settleTimer);
+        if (isGenerating && this.state !== "generating") {
+          this.state = "generating";
+          this.callbacks.onGeneratingStart();
+          return;
         }
-        this.settleTimer = window.setTimeout(() => {
-          if (!detectGenerating(this.adapter)) {
-            this.state = "idle";
-            this.callbacks.onGeneratingStop();
+
+        if (!isGenerating && this.state === "generating") {
+          if (this.settleTimer !== null) {
+            window.clearTimeout(this.settleTimer);
           }
-        }, 500);
+          this.settleTimer = window.setTimeout(() => {
+            try {
+              if (!detectGenerating(this.adapter)) {
+                this.state = "idle";
+                this.callbacks.onGeneratingStop();
+              }
+            } catch (error) {
+              this.stop();
+              this.callbacks.onError(error);
+            }
+          }, 500);
+        }
+      } catch (error) {
+        this.stop();
+        this.callbacks.onError(error);
       }
     });
 

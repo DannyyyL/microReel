@@ -38,6 +38,23 @@ export function App(): JSX.Element {
         </div>
 
         <div className="row">
+          <label htmlFor="mode">Content mode</label>
+          <select
+            id="mode"
+            value={settings.mode}
+            onChange={(event) =>
+              setLocalSettings((prev) => ({
+                ...prev,
+                mode: event.target.value as MicroReelSettings["mode"]
+              }))
+            }
+          >
+            <option value="education">Education (tips &amp; cards)</option>
+            <option value="entertainment">Entertainment (videos)</option>
+          </select>
+        </div>
+
+        <div className="row">
           <label htmlFor="position">Overlay position</label>
           <select
             id="position"

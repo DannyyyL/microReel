@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 260px;
+      padding: 14px;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+      background: #111827;
+      color: #f9fafb;
+    }
+    h1 {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #6b7280;
+      margin-bottom: 12px;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    label { font-size: 13px; font-weight: 500; }
+    select, input[type="checkbox"] { cursor: pointer; }
+    select {
+      background: #1f2937;
+      color: #f9fafb;
+      border: 1px solid #374151;
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 12px;
+    }
+    /* Toggle switch */
+    .toggle { position: relative; width: 36px; height: 20px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; inset: 0;
+      background: #374151; border-radius: 20px;
+      transition: background 200ms;
+      cursor: pointer;
+    }
+    .slider::before {
+      content: "";
+      position: absolute;
+      width: 14px; height: 14px;
+      left: 3px; top: 3px;
+      background: #fff; border-radius: 50%;
+      transition: transform 200ms;
+    }
+    .toggle input:checked + .slider { background: #2563eb; }
+    .toggle input:checked + .slider::before { transform: translateX(16px); }
+    .divider { border: none; border-top: 1px solid #1f2937; margin: 10px 0; }
+    .saved {
+      font-size: 11px;
+      color: #34d399;
+      text-align: center;
+      height: 16px;
+      margin-top: 4px;
+    }
+    .full-settings {
+      display: block;
+      text-align: center;
+      margin-top: 10px;
+      font-size: 11px;
+      color: #6b7280;
+      cursor: pointer;
+      text-decoration: underline;
+      background: none;
+      border: none;
+      color: #6b7280;
+    }
+    .full-settings:hover { color: #9ca3af; }
+  </style>
+</head>
+<body>
+  <h1>microReel</h1>
+
+  <div class="row">
+    <label for="enabled">Enabled</label>
+    <label class="toggle">
+      <input type="checkbox" id="enabled">
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <hr class="divider">
+
+  <div class="row">
+    <label for="mode">Mode</label>
+    <select id="mode">
+      <option value="education">Education</option>
+      <option value="entertainment">Entertainment</option>
+    </select>
+  </div>
+
+  <div class="saved" id="saved"></div>
+
+  <button class="full-settings" id="open-options">More settings →</button>
+
+  <script src="popup.js"></script>
+</body>
+</html>

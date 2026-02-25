@@ -18,7 +18,8 @@
     "open_in_tab": true
   },
   "action": {
-    "default_title": "microreel"
+    "default_title": "microreel",
+    "default_popup": "popup.html"
   },
   "content_scripts": [
     {

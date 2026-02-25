@@ -2,6 +2,8 @@ export type HostName = "chatgpt" | "claude";
 
 export type OverlayPosition = "top-right" | "side-right";
 
+export type ContentMode = "education" | "entertainment";
+
 export interface MicroCard {
   id: string;
   title: string;
@@ -10,8 +12,17 @@ export interface MicroCard {
   ttlMs: number;
 }
 
+export interface VideoCard {
+  id: string;
+  title: string;
+  /** YouTube video ID (works for Shorts too) */
+  youtubeId: string;
+  ttlMs: number;
+}
+
 export interface MicroReelSettings {
   enabled: boolean;
+  mode: ContentMode;
   position: OverlayPosition;
   startDelayMs: number;
   rotationMs: number;
