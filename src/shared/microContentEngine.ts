@@ -1,5 +1,5 @@
 import { cards } from "./cards";
-import { videos } from "./videos";
+import { videos as defaultVideos } from "./videos";
 import { ContentMode, EngineInput, MicroCard, VideoCard } from "./types";
 
 export type EngineResult =
@@ -9,6 +9,18 @@ export type EngineResult =
 export class MicroContentEngine {
   private recentIds: string[] = [];
   private readonly maxRecent = 2;
+  private videos: VideoCard[];
+
+  constructor(videos: VideoCard[] = defaultVideos) {
+    this.videos = videos;
+  }
+
+  /** Swap in a new video list (e.g. after a remote fetch). */
+  setVideos(videos: VideoCard[]): void {
+    if (videos.length) {
+      this.videos = videos;
+    }
+  }
 
   next(input: EngineInput, mode: ContentMode): EngineResult {
     if (mode === "entertainment") {
@@ -32,8 +44,8 @@ export class MicroContentEngine {
   }
 
   private pickVideo(): VideoCard {
-    const candidates = videos.filter((v) => !this.recentIds.includes(v.id));
-    const pool = candidates.length > 0 ? candidates : videos;
+    const candidates = this.videos.filter((v) => !this.recentIds.includes(v.id));
+    const pool = candidates.length > 0 ? candidates : this.videos;
     const index = Math.floor(Math.random() * pool.length);
     const selected = pool[index];
 

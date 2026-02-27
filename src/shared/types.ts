@@ -1,4 +1,4 @@
-export type HostName = "chatgpt" | "claude";
+export type HostName = "chatgpt" | "claude" | "gemini" | "copilot";
 
 export type OverlayPosition = "top-right" | "side-right";
 
@@ -26,6 +26,7 @@ export interface MicroReelSettings {
   position: OverlayPosition;
   startDelayMs: number;
   rotationMs: number;
+  stopOnHostDone: boolean;
 }
 
 export interface EngineInput {
@@ -36,7 +37,8 @@ export interface EngineInput {
 
 export interface HostAdapter {
   name: HostName;
-  matches(hostname: string): boolean;
+  /** Return true if this adapter should handle the current page. */
+  matches(hostname: string, pathname: string): boolean;
   inputSelector: string;
   sendButtonSelectors: string[];
   stopButtonSelectors: string[];

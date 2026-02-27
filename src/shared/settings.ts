@@ -4,10 +4,11 @@ export const SETTINGS_KEY = "microreel.settings";
 
 export const defaultSettings: MicroReelSettings = {
   enabled: true,
-  mode: "education",
+  mode: "entertainment",
   position: "top-right",
   startDelayMs: 1200,
-  rotationMs: 10000
+  rotationMs: 10000,
+  stopOnHostDone: false
 };
 
 export async function getSettings(): Promise<MicroReelSettings> {

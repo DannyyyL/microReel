@@ -105,6 +105,21 @@ export function App(): JSX.Element {
           />
         </div>
 
+        <div className="row">
+          <label htmlFor="stopOnHostDone">Stop video when host stops</label>
+          <input
+            id="stopOnHostDone"
+            type="checkbox"
+            checked={settings.stopOnHostDone}
+            onChange={(event) =>
+              setLocalSettings((prev) => ({
+                ...prev,
+                stopOnHostDone: event.target.checked
+              }))
+            }
+          />
+        </div>
+
         <p className="hint">Status: {status}</p>
 
         <div className="actions">

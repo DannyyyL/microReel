@@ -4,6 +4,7 @@ chrome.storage.sync.get(KEY, (result) => {
   const s = result[KEY] ?? {};
   document.getElementById("enabled").checked = s.enabled !== false;
   document.getElementById("mode").value = s.mode ?? "education";
+  document.getElementById("stop-on-done").checked = s.stopOnHostDone === true;
 });
 
 function save() {
@@ -12,7 +13,8 @@ function save() {
     const updated = {
       ...existing,
       enabled: document.getElementById("enabled").checked,
-      mode: document.getElementById("mode").value
+      mode: document.getElementById("mode").value,
+      stopOnHostDone: document.getElementById("stop-on-done").checked
     };
     chrome.storage.sync.set({ [KEY]: updated }, () => {
       const el = document.getElementById("saved");
@@ -24,6 +26,7 @@ function save() {
 
 document.getElementById("enabled").addEventListener("change", save);
 document.getElementById("mode").addEventListener("change", save);
+document.getElementById("stop-on-done").addEventListener("change", save);
 document.getElementById("open-options").addEventListener("click", () => {
   chrome.runtime.openOptionsPage();
 });
