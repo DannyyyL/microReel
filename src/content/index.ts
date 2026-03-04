@@ -40,6 +40,7 @@ void (async () => {
   let activeGenerationCount = 0;   // incremented per prompt, decremented on stop
   let preloadedResult: import("../shared/microContentEngine").EngineResult | null = null;
   let userManuallyClosed = false;
+  let blockNextContent = false;
 
   overlay.mount();
   overlay.setPosition(settings.position);
@@ -120,7 +121,7 @@ void (async () => {
   }
 
   function showNextContent(): void {
-    if (!contextAlive || userManuallyClosed) {
+    if (!contextAlive || userManuallyClosed || blockNextContent) {
       return;
     }
     // Use the preloaded result (computed at generation-start) if available
@@ -133,12 +134,12 @@ void (async () => {
       videoFinished = false;
       overlay.showVideo(result.video, () => {
         videoFinished = true;
-        if (pendingHide) {
-          // Generation stopped while video was playing — hide now.
+        if (pendingHide || blockNextContent) {
+          // Generation already finished or user hit stop — hide now that the video ended.
           pendingHide = false;
           overlay.hideAll();
         } else if (activeGenerationCount > 0) {
-          // Still generating — immediately play the next video.
+          // Still generating — chain to the next video.
           showNextContent();
         }
       });
@@ -151,10 +152,17 @@ void (async () => {
     onSubmitted() {
       emit("submitted");
     },
+    onUserStopRequested() {
+      // Block new content but let the current video finish naturally.
+      blockNextContent = true;
+      preloadedResult = null;
+      cleanupTimers();
+    },
     onGeneratingStart() {
       if (!contextAlive || !settings.enabled) {
         return;
       }
+      blockNextContent = false;
       activeGenerationCount++;
       userManuallyClosed = false; // Reset manual close state on new prompt
       // If a video is already playing, let it finish uninterrupted.
@@ -184,7 +192,11 @@ void (async () => {
       }
       startTimer = window.setTimeout(() => {
         showNextContent();
-        rotationTimer = window.setInterval(showNextContent, settings.rotationMs);
+        // Only rotate on a timer for cards — videos chain via their onEnded
+        // callback, so the rotation timer would cut them off mid-playback.
+        if (settings.mode !== "entertainment") {
+          rotationTimer = window.setInterval(showNextContent, settings.rotationMs);
+        }
       }, settings.startDelayMs);
     },
     onGeneratingStop() {
@@ -197,23 +209,49 @@ void (async () => {
       if (activeGenerationCount > 0) {
         return;
       }
+
+      // Block any further chaining for this cycle.
+      blockNextContent = true;
+
+      // If the start-delay timer is still pending the overlay was never shown.
+      const overlayNeverShown = startTimer !== null;
+      const savedPreload = preloadedResult;
       cleanupTimers();
+
       if (userManuallyClosed) {
-        // User manually closed the video, don't do anything else.
-        // Reset for the next cycle.
         userManuallyClosed = false;
         return;
       }
+
+      if (overlayNeverShown) {
+        // Generation was shorter than startDelayMs — show content now,
+        // then let it finish naturally before hiding.
+        preloadedResult = savedPreload;
+        showNextContent();
+        // blockNextContent is already true, so the onEnded callback will hide.
+        if (settings.mode !== "entertainment") {
+          // Show the card for one rotation cycle, then hide.
+          rotationTimer = window.setTimeout(() => {
+            rotationTimer = null;
+            overlay.hideAll();
+          }, settings.rotationMs);
+        }
+        return;
+      }
+
       if (settings.stopOnHostDone) {
+        // User opted to stop immediately when host finishes.
         overlay.hideAll();
         return;
       }
+
       if (settings.mode === "entertainment") {
         if (videoFinished) {
           // Video already ended — hide immediately.
           overlay.hideAll();
         } else {
           // Let the current video finish before hiding.
+          // The onEnded callback checks blockNextContent and will hideAll.
           pendingHide = true;
         }
       } else {

@@ -1,9 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "microreel",
+  "name": "MicroReel",
   "version": "0.1.0",
   "description": "Micro learning cards while AI is generating.",
-  "permissions": ["storage", "tabs"],
+  "permissions": [
+    "storage"
+  ],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
@@ -20,8 +22,18 @@
     "page": "options.html",
     "open_in_tab": true
   },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
   "action": {
-    "default_title": "microreel",
+    "default_title": "MicroReel",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    },
     "default_popup": "popup.html"
   },
   "content_scripts": [
@@ -33,7 +45,9 @@
         "https://gemini.google.com/*",
         "https://github.com/copilot*"
       ],
-      "js": ["content.js"],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ]

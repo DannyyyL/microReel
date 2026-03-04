@@ -7,6 +7,7 @@ interface DetectionCallbacks {
   onSubmitted(): void;
   onGeneratingStart(): void;
   onGeneratingStop(): void;
+  onUserStopRequested(): void;
   onError(error: unknown): void;
 }
 
@@ -17,7 +18,7 @@ const SUBMITTED_TIMEOUT_MS = 12_000;
 /** Minimum interval between evaluation runs (throttle). */
 const THROTTLE_MS = 120;
 /** Polling interval as a safety-net when MutationObserver misses transitions. */
-const POLL_MS = 1_500;
+const POLL_MS = 800;
 
 export class GenerationDetector {
   private state: GenerationState = "idle";
@@ -65,6 +66,7 @@ export class GenerationDetector {
   }
 
   private attachInputListeners(): void {
+    // Use capture phase so we see events before the host UI can stopPropagation.
     document.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" || event.shiftKey) {
         return;
@@ -72,28 +74,50 @@ export class GenerationDetector {
       const target = event.target as HTMLElement | null;
       if (!target) return;
       try {
-        if (target.matches(this.adapter.inputSelector)) {
+        // closest() handles child elements inside contenteditable / textarea wrappers
+        if (target.closest(this.adapter.inputSelector)) {
           this.markSubmitted();
         }
       } catch {
         // invalid selector — ignore
       }
-    });
+    }, { capture: true });
 
-    document.addEventListener("click", (event) => {
+    const handleSendClick = (event: Event): void => {
       const target = event.target as Element | null;
-      if (!target) {
-        return;
-      }
+      if (!target) return;
       try {
-        const sender = target.closest(this.adapter.sendButtonSelectors.join(","));
-        if (sender) {
+        if (target.closest(this.adapter.sendButtonSelectors.join(","))) {
           this.markSubmitted();
         }
       } catch {
         // invalid selector — ignore
       }
-    });
+    };
+
+    // Listen on both click and pointerdown (some hosts consume click before it bubbles).
+    document.addEventListener("click", handleSendClick, { capture: true });
+    document.addEventListener("pointerdown", handleSendClick, { capture: true });
+
+    const handleStopClick = (event: Event): void => {
+      const target = event.target as Element | null;
+      if (!target) return;
+      try {
+        if (target.closest(this.adapter.stopButtonSelectors.join(","))) {
+          this.callbacks.onUserStopRequested();
+        }
+      } catch {
+        // invalid selector — ignore
+      }
+    };
+
+    document.addEventListener("click", handleStopClick, { capture: true });
+    document.addEventListener("pointerdown", handleStopClick, { capture: true });
+
+    // Catch form-based submissions (e.g. Copilot's <form> wrapper).
+    document.addEventListener("submit", () => {
+      this.markSubmitted();
+    }, { capture: true });
   }
 
   private attachObserver(): void {

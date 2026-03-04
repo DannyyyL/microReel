@@ -1,5 +1,5 @@
 import { build, context } from "esbuild";
-import { cp, mkdir } from "node:fs/promises";
+import { cp, mkdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,11 +10,14 @@ const watchMode = process.argv.includes("--watch");
 
 const shared = {
   bundle: true,
-  sourcemap: true,
+  sourcemap: watchMode,
   target: "chrome120",
   platform: "browser",
   legalComments: "none",
-  logLevel: "info"
+  logLevel: "info",
+  minify: !watchMode,
+  treeShaking: true,
+  drop: watchMode ? [] : ["console", "debugger"]
 };
 
 const tasks = [
@@ -35,6 +38,7 @@ const tasks = [
   }
 ];
 
+await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 await cp(resolve(root, "static"), dist, { recursive: true });
 

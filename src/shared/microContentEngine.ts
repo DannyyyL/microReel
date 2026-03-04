@@ -7,7 +7,7 @@ export type EngineResult =
   | { kind: "video"; video: VideoCard };
 
 export class MicroContentEngine {
-  private recentIds: string[] = [];
+  private recentIds = new Set<string>();
   private readonly maxRecent = 2;
   private videos: VideoCard[];
 
@@ -30,12 +30,12 @@ export class MicroContentEngine {
   }
 
   private pickCard(input: EngineInput): MicroCard {
-    const candidates = cards.filter((card) => !this.recentIds.includes(card.id));
+    const candidates = cards.filter((card) => !this.recentIds.has(card.id));
     const pool = candidates.length > 0 ? candidates : cards;
     const index = Math.floor(Math.random() * pool.length);
     const selected = pool[index];
 
-    this.recentIds = [selected.id, ...this.recentIds].slice(0, this.maxRecent);
+    this.trackRecent(selected.id);
 
     return {
       ...selected,
@@ -44,13 +44,22 @@ export class MicroContentEngine {
   }
 
   private pickVideo(): VideoCard {
-    const candidates = this.videos.filter((v) => !this.recentIds.includes(v.id));
+    const candidates = this.videos.filter((v) => !this.recentIds.has(v.id));
     const pool = candidates.length > 0 ? candidates : this.videos;
     const index = Math.floor(Math.random() * pool.length);
     const selected = pool[index];
 
-    this.recentIds = [selected.id, ...this.recentIds].slice(0, this.maxRecent);
+    this.trackRecent(selected.id);
 
     return selected;
+  }
+
+  private trackRecent(id: string): void {
+    this.recentIds.add(id);
+    if (this.recentIds.size > this.maxRecent) {
+      // Remove the oldest entry (first inserted)
+      const first = this.recentIds.values().next().value!;
+      this.recentIds.delete(first);
+    }
   }
 }

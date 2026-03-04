@@ -3,6 +3,14 @@ import { MicroCard, OverlayPosition, VideoCard } from "../shared/types";
 const GEOMETRY_KEY = "microreel.geometry";
 const MIN_WIDTH = 200;
 const MAX_WIDTH = 520;
+const YOUTUBE_ORIGIN = "https://www.youtube.com";
+const HANDSHAKE_RETRY_MS = 250;
+const HANDSHAKE_MAX_ATTEMPTS = 20;
+const VIDEO_TRANSITION_GUARD_MS = 3000;
+const FALLBACK_BUFFER_MS = 2000;
+const IFRAME_CLEAR_DELAY_MS = 260;
+const PRELOAD_NUDGES_MS = [400, 1200];
+const FULL_LOAD_NUDGES_MS = [700, 1600];
 
 interface StoredGeometry {
   left: number;
@@ -23,6 +31,7 @@ export class OverlayRenderer {
   private fallbackTimer: number | null = null;
   private listeningInterval: number | null = null;
   private readonly messageHandler: (event: MessageEvent) => void;
+  private readonly keydownHandler: (event: KeyboardEvent) => void;
   private preloadedVideoId: string | null = null;
   // Ignore ended events briefly after loading a new video to prevent
   // YouTube's rapid onStateChange=0 + infoDelivery double-fire from chaining twice.
@@ -39,6 +48,9 @@ export class OverlayRenderer {
   private resizeStartWidth = 0;
   // Whether the user has manually positioned the overlay
   private hasMoved = false;
+
+  private dragRaf: number | null = null;
+  private resizeRaf: number | null = null;
 
   constructor() {
     this.host = document.createElement("div");
@@ -214,13 +226,14 @@ export class OverlayRenderer {
         opacity: 0;
         transform: translateY(8px);
         transition: opacity 250ms ease, transform 250ms ease;
-        pointer-events: auto;
+        pointer-events: none;
         background: #000;
         position: relative;
       }
       .video-wrap.visible {
         opacity: 1;
         transform: translateY(0);
+        pointer-events: auto;
       }
       .video-wrap iframe {
         display: block;
@@ -251,6 +264,7 @@ export class OverlayRenderer {
     closeBtn.className = "close-btn";
     closeBtn.innerHTML = "&times;";
     closeBtn.setAttribute("aria-label", "Close video");
+    closeBtn.tabIndex = 0;
     closeBtn.addEventListener("pointerdown", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -258,8 +272,14 @@ export class OverlayRenderer {
     closeBtn.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      this.hideAll();
-      this.host.dispatchEvent(new CustomEvent("microreel-manual-close"));
+      this.closeOverlay();
+    });
+    closeBtn.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        event.stopPropagation();
+        this.closeOverlay();
+      }
     });
     dragHandle.appendChild(closeBtn);
 
@@ -285,6 +305,7 @@ export class OverlayRenderer {
     this.shadowRoot.append(style, this.wrap);
 
     this.messageHandler = (event: MessageEvent) => {
+      if (event.origin !== YOUTUBE_ORIGIN) return;
       try {
         const raw = event.data;
         const data = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -308,8 +329,21 @@ export class OverlayRenderer {
     };
     window.addEventListener("message", this.messageHandler);
 
+    this.keydownHandler = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && this.wrap.classList.contains("has-content")) {
+        event.preventDefault();
+        this.closeOverlay();
+      }
+    };
+    window.addEventListener("keydown", this.keydownHandler);
+
     this.initDrag(dragHandle);
     this.initResize(resizeHandle);
+  }
+
+  private closeOverlay(): void {
+    this.hideAll();
+    this.host.dispatchEvent(new CustomEvent("microreel-manual-close"));
   }
 
   // ── Drag ────────────────────────────────────────────────────────────────────
@@ -328,16 +362,24 @@ export class OverlayRenderer {
     });
     handle.addEventListener("pointermove", (e) => {
       if (!this.isDragging) return;
-      const newLeft = e.clientX - this.dragOffsetX;
-      const newTop = e.clientY - this.dragOffsetY;
-      const maxLeft = window.innerWidth - this.wrap.offsetWidth;
-      const maxTop = window.innerHeight - this.wrap.offsetHeight;
-      this.wrap.style.left = `${Math.max(0, Math.min(newLeft, maxLeft))}px`;
-      this.wrap.style.top = `${Math.max(0, Math.min(newTop, maxTop))}px`;
+      if (this.dragRaf !== null) return;
+      this.dragRaf = requestAnimationFrame(() => {
+        const newLeft = e.clientX - this.dragOffsetX;
+        const newTop = e.clientY - this.dragOffsetY;
+        const maxLeft = window.innerWidth - this.wrap.offsetWidth;
+        const maxTop = window.innerHeight - this.wrap.offsetHeight;
+        this.wrap.style.left = `${Math.max(0, Math.min(newLeft, maxLeft))}px`;
+        this.wrap.style.top = `${Math.max(0, Math.min(newTop, maxTop))}px`;
+        this.dragRaf = null;
+      });
     });
     handle.addEventListener("pointerup", () => {
       if (!this.isDragging) return;
       this.isDragging = false;
+      if (this.dragRaf !== null) {
+        cancelAnimationFrame(this.dragRaf);
+        this.dragRaf = null;
+      }
       this.iframeCover.classList.remove("active");
       this.wrap.style.transition = "";
       this.saveGeometry();
@@ -357,12 +399,20 @@ export class OverlayRenderer {
     });
     handle.addEventListener("pointermove", (e) => {
       if (!this.isResizing) return;
-      const newWidth = this.resizeStartWidth + (e.clientX - this.resizeStartX);
-      this.wrap.style.width = `${Math.max(MIN_WIDTH, Math.min(newWidth, MAX_WIDTH))}px`;
+      if (this.resizeRaf !== null) return;
+      this.resizeRaf = requestAnimationFrame(() => {
+        const newWidth = this.resizeStartWidth + (e.clientX - this.resizeStartX);
+        this.wrap.style.width = `${Math.max(MIN_WIDTH, Math.min(newWidth, MAX_WIDTH))}px`;
+        this.resizeRaf = null;
+      });
     });
     handle.addEventListener("pointerup", () => {
       if (!this.isResizing) return;
       this.isResizing = false;
+      if (this.resizeRaf !== null) {
+        cancelAnimationFrame(this.resizeRaf);
+        this.resizeRaf = null;
+      }
       this.iframeCover.classList.remove("active");
       this.saveGeometry();
     });
@@ -392,7 +442,7 @@ export class OverlayRenderer {
     }
   }
 
-  async loadGeometry(): Promise<void> {
+  private async loadGeometry(): Promise<void> {
     try {
       const result = await chrome.storage.local.get(GEOMETRY_KEY);
       const g = result[GEOMETRY_KEY] as StoredGeometry | undefined;
@@ -426,10 +476,10 @@ export class OverlayRenderer {
       } catch {
         // iframe not ready yet
       }
-      if (attempts > 20) {
+      if (attempts > HANDSHAKE_MAX_ATTEMPTS) {
         this.stopListeningHandshake();
       }
-    }, 250);
+    }, HANDSHAKE_RETRY_MS);
   }
 
   private stopListeningHandshake(): void {
@@ -449,6 +499,7 @@ export class OverlayRenderer {
   unmount(): void {
     this.stopListeningHandshake();
     window.removeEventListener("message", this.messageHandler);
+    window.removeEventListener("keydown", this.keydownHandler);
     this.host.remove();
   }
 
@@ -510,9 +561,9 @@ export class OverlayRenderer {
     this.fallbackTimer = window.setTimeout(() => {
       this.fallbackTimer = null;
       this.triggerEnded();
-    }, video.ttlMs + 2000);
+    }, video.ttlMs + FALLBACK_BUFFER_MS);
     // Suppress ended events for the first 3s after loading a new video.
-    this.videoTransitionUntil = Date.now() + 3000;
+    this.videoTransitionUntil = Date.now() + VIDEO_TRANSITION_GUARD_MS;
     this.endingGuard = false;
     this.clearPlayNudges();
 
@@ -521,22 +572,21 @@ export class OverlayRenderer {
       this.preloadedVideoId = null;
       try {
         this.videoIframe.contentWindow?.postMessage(
-          JSON.stringify({ event: "command", func: "unMute", args: "" }), "*"
-        );
-        this.videoIframe.contentWindow?.postMessage(
           JSON.stringify({ event: "command", func: "playVideo", args: "" }), "*"
         );
       } catch { /* iframe not ready yet, fallback to full load */ }
       // Even with preload, occasionally YouTube sticks on thumbnail; nudge play twice.
-      this.playNudgeTimers.push(window.setTimeout(() => this.nudgePlay(), 400));
-      this.playNudgeTimers.push(window.setTimeout(() => this.nudgePlay(), 1200));
+      PRELOAD_NUDGES_MS.forEach((delay) => {
+        this.playNudgeTimers.push(window.setTimeout(() => this.nudgePlay(), delay));
+      });
     } else {
       // No preload match — full load with autoplay
       this.preloadedVideoId = null;
-      this.videoIframe.src = `https://www.youtube.com/embed/${video.youtubeId}?autoplay=1&mute=0&loop=0&playlist=${video.youtubeId}&controls=1&modestbranding=1&playsinline=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
+      this.videoIframe.src = `https://www.youtube.com/embed/${video.youtubeId}?autoplay=1&mute=1&loop=0&playlist=${video.youtubeId}&controls=1&modestbranding=1&playsinline=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
       // Nudge play after load in case autoplay is blocked.
-      this.playNudgeTimers.push(window.setTimeout(() => this.nudgePlay(), 700));
-      this.playNudgeTimers.push(window.setTimeout(() => this.nudgePlay(), 1600));
+      FULL_LOAD_NUDGES_MS.forEach((delay) => {
+        this.playNudgeTimers.push(window.setTimeout(() => this.nudgePlay(), delay));
+      });
     }
 
     this.videoWrap.classList.add("visible");
@@ -565,7 +615,7 @@ export class OverlayRenderer {
     if (!this.cardEl.classList.contains("visible")) {
       this.wrap.classList.remove("has-content");
     }
-    window.setTimeout(() => { this.videoIframe.src = ""; }, 260);
+    window.setTimeout(() => { this.videoIframe.src = ""; }, IFRAME_CLEAR_DELAY_MS);
   }
 
   hideAll(): void {
@@ -577,10 +627,6 @@ export class OverlayRenderer {
     try {
       this.videoIframe.contentWindow?.postMessage(
         JSON.stringify({ event: "command", func: "playVideo", args: "" }),
-        "*"
-      );
-      this.videoIframe.contentWindow?.postMessage(
-        JSON.stringify({ event: "command", func: "unMute", args: "" }),
         "*"
       );
     } catch {

@@ -101,29 +101,29 @@ export function getHostAdapter(): HostAdapter | null {
 }
 
 function hasElement(selectors: string[]): boolean {
-  return selectors.some((selector) => {
+  for (const selector of selectors) {
     try {
       const nodes = document.querySelectorAll(selector);
-      return Array.from(nodes).some((node) => {
-        if (!(node instanceof HTMLElement)) {
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        if (!(node instanceof HTMLElement)) return true;
+        // Fast layout-based visibility check (no getComputedStyle)
+        if (node.offsetParent !== null || node.offsetWidth > 0 || node.offsetHeight > 0) {
           return true;
         }
-        // Fast layout-based visibility check (no getComputedStyle)
-        if (node.offsetParent === null && node.offsetWidth === 0 && node.offsetHeight === 0) {
-          return false;
-        }
-        return true;
-      });
+      }
     } catch {
-      return false; // invalid selector — skip
+      // invalid selector — skip
     }
-  });
+  }
+  return false;
 }
 
 function hasButtonByText(text: string): boolean {
   const lower = text.toLowerCase();
   const buttons = document.querySelectorAll("button");
-  for (const button of Array.from(buttons)) {
+  for (let i = 0; i < buttons.length; i++) {
+    const button = buttons[i];
     const label = (button.getAttribute("aria-label") ?? "").toLowerCase();
     const content = (button.textContent ?? "").toLowerCase();
     if (label.includes(lower) || content.includes(lower)) {
