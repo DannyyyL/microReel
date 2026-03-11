@@ -1,10 +1,10 @@
+import { matchesHost } from "../shared/hosts";
 import { HostAdapter } from "../shared/types";
 
 const adapters: HostAdapter[] = [
   {
     name: "chatgpt",
-    matches: (hostname) =>
-      hostname.includes("chatgpt.com") || hostname.includes("chat.openai.com"),
+    matches: (hostname, pathname) => matchesHost("chatgpt", hostname, pathname),
     inputSelector: 'textarea, [contenteditable="true"]',
     sendButtonSelectors: [
       'button[data-testid="send-button"]',
@@ -25,7 +25,7 @@ const adapters: HostAdapter[] = [
   },
   {
     name: "claude",
-    matches: (hostname) => hostname.includes("claude.ai"),
+    matches: (hostname, pathname) => matchesHost("claude", hostname, pathname),
     inputSelector: "textarea",
     sendButtonSelectors: ['button[aria-label*="Send" i]', 'button[data-testid*="send" i]'],
     stopButtonSelectors: ['button[aria-label*="Stop" i]', 'button[data-testid*="stop" i]'],
@@ -35,7 +35,7 @@ const adapters: HostAdapter[] = [
   {
     // Google Gemini — gemini.google.com
     name: "gemini",
-    matches: (hostname) => hostname.includes("gemini.google.com"),
+    matches: (hostname, pathname) => matchesHost("gemini", hostname, pathname),
     inputSelector: 'rich-textarea [contenteditable], .ql-editor',
     sendButtonSelectors: [
       'button.send-button',
@@ -56,8 +56,7 @@ const adapters: HostAdapter[] = [
   {
     // GitHub Copilot web — github.com/copilot
     name: "copilot",
-    matches: (hostname, pathname) =>
-      hostname.includes("github.com") && pathname.startsWith("/copilot"),
+    matches: (hostname, pathname) => matchesHost("copilot", hostname, pathname),
     inputSelector: [
       'textarea[name="user-message"]',
       'textarea[placeholder*="message" i]',

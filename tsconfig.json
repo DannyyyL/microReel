@@ -6,10 +6,10 @@
     "strict": true,
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM"],
-    "types": ["chrome"],
+    "types": ["chrome", "node"],
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.mjs"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.mjs", "tests/**/*.ts"]
 }

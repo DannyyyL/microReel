@@ -1,5 +1,7 @@
 export type HostName = "chatgpt" | "claude" | "gemini" | "copilot";
 
+export type SiteEnabledMap = Record<HostName, boolean>;
+
 export type OverlayPosition = "top-right" | "side-right";
 
 export type ContentMode = "education" | "entertainment";
@@ -22,6 +24,8 @@ export interface VideoCard {
 
 export interface MicroReelSettings {
   enabled: boolean;
+  siteEnabled: SiteEnabledMap;
+  extensionMuted: boolean;
   mode: ContentMode;
   position: OverlayPosition;
   startDelayMs: number;

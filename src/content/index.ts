@@ -1,7 +1,14 @@
-import { getSettings, SETTINGS_KEY } from "../shared/settings";
+import {
+  getSettings,
+  isFeatureEnabledForHost,
+  normalizeSettings,
+  SETTINGS_KEY
+} from "../shared/settings";
 import { MicroContentEngine } from "../shared/microContentEngine";
 import { loadVideos } from "../shared/videoLoader";
-import { SessionEvent } from "../shared/types";
+import { VideoPreloadQueue } from "../shared/videoPreloadQueue";
+import { AudioPreferenceState } from "../shared/audio";
+import { SessionEvent, VideoCard } from "../shared/types";
 import { GenerationDetector } from "./detection";
 import { getHostAdapter } from "./hosts";
 import { OverlayRenderer } from "./overlay";
@@ -29,6 +36,7 @@ void (async () => {
 
   const engine = new MicroContentEngine(videoList);
   const overlay = new OverlayRenderer();
+  const preloadQueue = new VideoPreloadQueue(engine, { targetSize: 3 });
 
   let settings = settings0;
   let startTimer: number | null = null;
@@ -41,9 +49,83 @@ void (async () => {
   let preloadedResult: import("../shared/microContentEngine").EngineResult | null = null;
   let userManuallyClosed = false;
   let blockNextContent = false;
+  let audioState: AudioPreferenceState = {
+    pageMuted: false,
+    extensionMuted: settings.extensionMuted
+  };
 
   overlay.mount();
   overlay.setPosition(settings.position);
+  overlay.setAudioState(audioState);
+
+  // ── Aggressive preloading at page load ──────────────────────────────────
+  // Start background validation immediately so videos are ready before the
+  // user even submits a prompt. Once validated, preload the first video's
+  // iframe so it's buffered and can play instantly.
+  if (settings.mode === "entertainment" && isFeatureEnabledForHost(settings, activeAdapter.name)) {
+    preloadQueue.fill();
+    // Wait a moment for the first validation to finish, then preload the iframe.
+    scheduleIdlePreload();
+  }
+
+  /**
+   * Schedule iframe preloading at idle time. Uses requestIdleCallback where
+   * available, falling back to a short setTimeout.
+   */
+  function scheduleIdlePreload(): void {
+    const doPreload = () => {
+      if (!contextAlive) return;
+      const video = preloadQueue.peek();
+      if (video) {
+        overlay.preloadVideo(video);
+        console.debug("microreel: idle-preloaded video", video.youtubeId);
+      } else {
+        // Queue not filled yet — retry after a short delay.
+        window.setTimeout(() => {
+          if (!contextAlive) return;
+          const v = preloadQueue.peek();
+          if (v) overlay.preloadVideo(v);
+        }, 1500);
+      }
+    };
+
+    if (typeof (window as unknown as Record<string, unknown>).requestIdleCallback === "function") {
+      (window as unknown as { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => void })
+        .requestIdleCallback(doPreload, { timeout: 3000 });
+    } else {
+      setTimeout(doPreload, 500);
+    }
+  }
+
+  try {
+    chrome.runtime.sendMessage({ kind: "MICROREEL_REQUEST_AUDIO_STATE" }, () => {
+      void chrome.runtime.lastError;
+    });
+  } catch {
+    // ignore audio sync bootstrap errors
+  }
+
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.kind !== "MICROREEL_GET_PAGE_CONTEXT") {
+      if (message?.kind === "MICROREEL_AUDIO_STATE" && message.audioState) {
+        audioState = {
+          pageMuted: Boolean(message.audioState.pageMuted),
+          extensionMuted: Boolean(message.audioState.extensionMuted)
+        };
+        overlay.setAudioState(audioState);
+      }
+      return;
+    }
+
+    sendResponse({
+      host: activeAdapter.name,
+      url: location.href
+    });
+  });
+
+  function isActiveOnCurrentSite(): boolean {
+    return isFeatureEnabledForHost(settings, activeAdapter.name);
+  }
 
   // Listen for manual close events from the overlay
   document.getElementById("microreel-root")?.addEventListener("microreel-manual-close", () => {
@@ -70,6 +152,7 @@ void (async () => {
     cleanupTimers();
     overlay.hideAll();
     overlay.unmount();
+    preloadQueue.dispose();
     detector?.stop();
   }
 
@@ -77,14 +160,22 @@ void (async () => {
     if (!contextAlive || areaName !== "sync" || !changes[SETTINGS_KEY]) {
       return;
     }
-    settings = {
-      ...settings,
-      ...changes[SETTINGS_KEY].newValue
+    settings = normalizeSettings(changes[SETTINGS_KEY].newValue);
+    audioState = {
+      ...audioState,
+      extensionMuted: settings.extensionMuted
     };
     overlay.setPosition(settings.position);
-    if (!settings.enabled) {
+    overlay.setAudioState(audioState);
+    if (!isActiveOnCurrentSite()) {
+      if (activeGenerationCount > 0) {
+        emit("generating-stop");
+      }
+      activeGenerationCount = 0;
+      pendingHide = false;
+      blockNextContent = false;
       cleanupTimers();
-      overlay.hide();
+      overlay.hideAll();
     }
   });
 
@@ -120,11 +211,54 @@ void (async () => {
     preloadedResult = null;
   }
 
+  /**
+   * Preload the next video from the queue into the overlay's second iframe
+   * so it's ready for instant playback when the current video ends.
+   */
+  function preloadNextFromQueue(): void {
+    const next = preloadQueue.peek();
+    if (next) {
+      overlay.preloadVideo(next);
+    }
+  }
+
   function showNextContent(): void {
     if (!contextAlive || userManuallyClosed || blockNextContent) {
       return;
     }
-    // Use the preloaded result (computed at generation-start) if available
+
+    if (settings.mode === "entertainment") {
+      // Try to get a pre-validated video from the queue.
+      const video = preloadedResult?.kind === "video"
+        ? (preloadedResult.video as VideoCard)
+        : preloadQueue.take();
+      preloadedResult = null;
+
+      if (video) {
+        videoFinished = false;
+        overlay.showVideo(video, {
+          onEnded: () => {
+            videoFinished = true;
+            if (pendingHide || blockNextContent) {
+              pendingHide = false;
+              overlay.hideAll();
+            } else if (activeGenerationCount > 0) {
+              showNextContent();
+            }
+          },
+          onUnavailable: () => {
+            void handleUnavailableVideo(video);
+          }
+        });
+        // Start preloading the next video into the second iframe.
+        preloadNextFromQueue();
+        return;
+      }
+      // Queue empty — nothing to show.
+      return;
+    }
+
+    // Education mode — cards
     const result = preloadedResult ?? engine.next({
       host: activeAdapter.name,
       elapsedMs: Date.now() - generationStartedAt
@@ -132,15 +266,18 @@ void (async () => {
     preloadedResult = null;
     if (result.kind === "video") {
       videoFinished = false;
-      overlay.showVideo(result.video, () => {
-        videoFinished = true;
-        if (pendingHide || blockNextContent) {
-          // Generation already finished or user hit stop — hide now that the video ended.
-          pendingHide = false;
-          overlay.hideAll();
-        } else if (activeGenerationCount > 0) {
-          // Still generating — chain to the next video.
-          showNextContent();
+      overlay.showVideo(result.video, {
+        onEnded: () => {
+          videoFinished = true;
+          if (pendingHide || blockNextContent) {
+            pendingHide = false;
+            overlay.hideAll();
+          } else if (activeGenerationCount > 0) {
+            showNextContent();
+          }
+        },
+        onUnavailable: () => {
+          void handleUnavailableVideo(result.video);
         }
       });
     } else {
@@ -148,18 +285,49 @@ void (async () => {
     }
   }
 
+  async function handleUnavailableVideo(video: VideoCard): Promise<void> {
+    await preloadQueue.markUnavailable(video);
+
+    if (!contextAlive) {
+      return;
+    }
+
+    if (settings.mode !== "entertainment") {
+      overlay.hideAll();
+      return;
+    }
+
+    // Try the next video from the queue.
+    const nextVideo = preloadQueue.take();
+    if (nextVideo) {
+      preloadedResult = { kind: "video", video: nextVideo };
+      showNextContent();
+      return;
+    }
+
+    pendingHide = false;
+    videoFinished = true;
+    overlay.hideAll();
+  }
+
   const detector = new GenerationDetector(activeAdapter, {
     onSubmitted() {
+      if (!isActiveOnCurrentSite()) {
+        return;
+      }
       emit("submitted");
     },
     onUserStopRequested() {
+      if (!isActiveOnCurrentSite()) {
+        return;
+      }
       // Block new content but let the current video finish naturally.
       blockNextContent = true;
       preloadedResult = null;
       cleanupTimers();
     },
     onGeneratingStart() {
-      if (!contextAlive || !settings.enabled) {
+      if (!contextAlive || !isActiveOnCurrentSite()) {
         return;
       }
       blockNextContent = false;
@@ -179,17 +347,23 @@ void (async () => {
       generationStartedAt = Date.now();
       emit("generating-start");
       cleanupTimers();
-      // In entertainment mode, start buffering the next video immediately so it
-      // is ready by the time startDelayMs elapses.
+
+      // In entertainment mode, the video is already preloaded (iframe buffered
+      // at page load or after the previous video started). Just grab the next
+      // validated video from the queue and show it after startDelayMs.
       if (settings.mode === "entertainment") {
-        preloadedResult = engine.next({
-          host: activeAdapter.name,
-          elapsedMs: 0
-        }, settings.mode);
-        if (preloadedResult.kind === "video") {
-          overlay.preloadVideo(preloadedResult.video);
+        // Ensure the queue is being filled.
+        preloadQueue.fill();
+        const video = preloadQueue.take();
+        if (video) {
+          preloadedResult = { kind: "video", video };
         }
+        startTimer = window.setTimeout(() => {
+          showNextContent();
+        }, settings.startDelayMs);
+        return;
       }
+
       startTimer = window.setTimeout(() => {
         showNextContent();
         // Only rotate on a timer for cards — videos chain via their onEnded
@@ -200,7 +374,7 @@ void (async () => {
       }, settings.startDelayMs);
     },
     onGeneratingStop() {
-      if (!contextAlive) {
+      if (!contextAlive || activeGenerationCount === 0) {
         return;
       }
       activeGenerationCount = Math.max(0, activeGenerationCount - 1);
@@ -256,6 +430,12 @@ void (async () => {
         }
       } else {
         overlay.hideAll();
+      }
+
+      // Re-preload for the next generation cycle.
+      if (settings.mode === "entertainment") {
+        preloadQueue.fill();
+        scheduleIdlePreload();
       }
     },
     onError(_error) {

@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "description": "Micro learning cards while AI is generating.",
   "permissions": [
+    "activeTab",
+    "tabs",
     "storage"
   ],
   "host_permissions": [
@@ -12,6 +14,7 @@
     "https://claude.ai/*",
     "https://gemini.google.com/*",
     "https://github.com/copilot*",
+    "https://www.youtube.com/*",
     "https://raw.githubusercontent.com/DannyyyL/microReel/*"
   ],
   "background": {
@@ -24,6 +27,7 @@
   },
   "icons": {
     "16": "icon16.png",
+    "32": "icon32.png",
     "48": "icon48.png",
     "128": "icon128.png"
   },
@@ -31,6 +35,7 @@
     "default_title": "MicroReel",
     "default_icon": {
       "16": "icon16.png",
+      "32": "icon32.png",
       "48": "icon48.png",
       "128": "icon128.png"
     },

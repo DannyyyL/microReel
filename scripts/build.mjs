@@ -35,6 +35,11 @@ const tasks = [
     entryPoints: [resolve(root, "src/options/main.tsx")],
     outfile: resolve(dist, "options.js"),
     format: "esm"
+  },
+  {
+    entryPoints: [resolve(root, "src/popup/index.ts")],
+    outfile: resolve(dist, "popup.js"),
+    format: "esm"
   }
 ];
 

@@ -3,7 +3,7 @@ import { detectGenerating } from "./hosts";
 
 export type GenerationState = "idle" | "submitted" | "generating";
 
-interface DetectionCallbacks {
+export interface DetectionCallbacks {
   onSubmitted(): void;
   onGeneratingStart(): void;
   onGeneratingStop(): void;
@@ -12,27 +12,50 @@ interface DetectionCallbacks {
 }
 
 /** How long to wait after the last "not generating" signal before confirming stop. */
-const SETTLE_MS = 800;
-/** If state stays "submitted" this long with no generation, reset to idle. */
-const SUBMITTED_TIMEOUT_MS = 12_000;
-/** Minimum interval between evaluation runs (throttle). */
-const THROTTLE_MS = 120;
-/** Polling interval as a safety-net when MutationObserver misses transitions. */
-const POLL_MS = 800;
+export const defaultDetectionTimings = {
+  settleMs: 800,
+  submittedTimeoutMs: 12_000,
+  throttleMs: 120,
+  pollMs: 800
+} as const;
+
+export interface DetectionTimingConfig {
+  settleMs?: number;
+  submittedTimeoutMs?: number;
+  throttleMs?: number;
+  pollMs?: number;
+}
+
+type ResolvedDetectionTimings = {
+  settleMs: number;
+  submittedTimeoutMs: number;
+  throttleMs: number;
+  pollMs: number;
+};
 
 export class GenerationDetector {
   private state: GenerationState = "idle";
   private observer: MutationObserver | null = null;
+  private cleanupListeners: Array<() => void> = [];
   private settleTimer: number | null = null;
   private submittedTimer: number | null = null;
   private pollTimer: number | null = null;
   private lastEvalTime = 0;
   private pendingThrottle: number | null = null;
 
+  private readonly timings: ResolvedDetectionTimings;
+
   constructor(
     private readonly adapter: HostAdapter,
-    private readonly callbacks: DetectionCallbacks
-  ) {}
+    private readonly callbacks: DetectionCallbacks,
+    private readonly detectGeneratingFn: (adapter: HostAdapter) => boolean = detectGenerating,
+    timings: DetectionTimingConfig = {}
+  ) {
+    this.timings = {
+      ...defaultDetectionTimings,
+      ...timings
+    };
+  }
 
   start(): void {
     this.attachInputListeners();
@@ -44,6 +67,8 @@ export class GenerationDetector {
     this.observer?.disconnect();
     this.observer = null;
     this.clearAllTimers();
+    this.cleanupListeners.forEach((cleanup) => cleanup());
+    this.cleanupListeners = [];
   }
 
   private clearAllTimers(): void {
@@ -65,9 +90,19 @@ export class GenerationDetector {
     }
   }
 
+  private addDocumentListener<K extends keyof DocumentEventMap>(
+    type: K,
+    listener: (event: DocumentEventMap[K]) => void
+  ): void {
+    document.addEventListener(type, listener as EventListener, true);
+    this.cleanupListeners.push(() => {
+      document.removeEventListener(type, listener as EventListener, true);
+    });
+  }
+
   private attachInputListeners(): void {
     // Use capture phase so we see events before the host UI can stopPropagation.
-    document.addEventListener("keydown", (event) => {
+    this.addDocumentListener("keydown", (event) => {
       if (event.key !== "Enter" || event.shiftKey) {
         return;
       }
@@ -81,7 +116,7 @@ export class GenerationDetector {
       } catch {
         // invalid selector — ignore
       }
-    }, { capture: true });
+    });
 
     const handleSendClick = (event: Event): void => {
       const target = event.target as Element | null;
@@ -96,8 +131,8 @@ export class GenerationDetector {
     };
 
     // Listen on both click and pointerdown (some hosts consume click before it bubbles).
-    document.addEventListener("click", handleSendClick, { capture: true });
-    document.addEventListener("pointerdown", handleSendClick, { capture: true });
+    this.addDocumentListener("click", handleSendClick);
+    this.addDocumentListener("pointerdown", handleSendClick);
 
     const handleStopClick = (event: Event): void => {
       const target = event.target as Element | null;
@@ -111,13 +146,13 @@ export class GenerationDetector {
       }
     };
 
-    document.addEventListener("click", handleStopClick, { capture: true });
-    document.addEventListener("pointerdown", handleStopClick, { capture: true });
+    this.addDocumentListener("click", handleStopClick);
+    this.addDocumentListener("pointerdown", handleStopClick);
 
     // Catch form-based submissions (e.g. Copilot's <form> wrapper).
-    document.addEventListener("submit", () => {
+    this.addDocumentListener("submit", () => {
       this.markSubmitted();
-    }, { capture: true });
+    });
   }
 
   private attachObserver(): void {
@@ -137,16 +172,16 @@ export class GenerationDetector {
   private startPolling(): void {
     this.pollTimer = window.setInterval(() => {
       this.evaluate();
-    }, POLL_MS);
+    }, this.timings.pollMs);
   }
 
-  /** Throttle: run evaluate() at most once every THROTTLE_MS. */
+  /** Throttle: run evaluate() at most once every throttleMs. */
   private scheduleEval(): void {
     const now = Date.now();
-    if (now - this.lastEvalTime >= THROTTLE_MS) {
+    if (now - this.lastEvalTime >= this.timings.throttleMs) {
       this.evaluate();
     } else if (this.pendingThrottle === null) {
-      const delay = THROTTLE_MS - (now - this.lastEvalTime);
+      const delay = this.timings.throttleMs - (now - this.lastEvalTime);
       this.pendingThrottle = window.setTimeout(() => {
         this.pendingThrottle = null;
         this.evaluate();
@@ -158,7 +193,7 @@ export class GenerationDetector {
   private evaluate(): void {
     this.lastEvalTime = Date.now();
     try {
-      const isGenerating = detectGenerating(this.adapter);
+      const isGenerating = this.detectGeneratingFn(this.adapter);
 
       const canStartGenerating =
         this.state === "submitted" || this.adapter.name !== "gemini";
@@ -176,7 +211,7 @@ export class GenerationDetector {
           this.settleTimer = window.setTimeout(() => {
             this.settleTimer = null;
             try {
-              if (!detectGenerating(this.adapter)) {
+              if (!this.detectGeneratingFn(this.adapter)) {
                 this.state = "idle";
                 this.callbacks.onGeneratingStop();
               }
@@ -184,7 +219,7 @@ export class GenerationDetector {
               this.stop();
               this.callbacks.onError(error);
             }
-          }, SETTLE_MS);
+          }, this.timings.settleMs);
         }
       } else if (isGenerating && this.state === "generating") {
         // Still generating — cancel any pending settle
@@ -221,7 +256,7 @@ export class GenerationDetector {
         if (this.state === "submitted") {
           this.state = "idle";
         }
-      }, SUBMITTED_TIMEOUT_MS);
+      }, this.timings.submittedTimeoutMs);
     }
   }
 }

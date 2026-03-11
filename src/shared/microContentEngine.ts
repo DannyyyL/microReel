@@ -10,16 +10,31 @@ export class MicroContentEngine {
   private recentIds = new Set<string>();
   private readonly maxRecent = 2;
   private videos: VideoCard[];
+  private unavailableVideoIds = new Set<string>();
 
-  constructor(videos: VideoCard[] = defaultVideos) {
+  constructor(
+    videos: VideoCard[] = defaultVideos,
+    private readonly random: () => number = Math.random
+  ) {
     this.videos = videos;
   }
 
   /** Swap in a new video list (e.g. after a remote fetch). */
   setVideos(videos: VideoCard[]): void {
-    if (videos.length) {
-      this.videos = videos;
-    }
+    this.videos = videos;
+  }
+
+  hasAvailableVideos(): boolean {
+    return this.videos.some((video) => !this.unavailableVideoIds.has(video.youtubeId));
+  }
+
+  nextVideo(): VideoCard | null {
+    return this.pickVideoOrNull();
+  }
+
+  markVideoUnavailable(video: VideoCard | string): void {
+    const youtubeId = typeof video === "string" ? video : video.youtubeId;
+    this.unavailableVideoIds.add(youtubeId);
   }
 
   next(input: EngineInput, mode: ContentMode): EngineResult {
@@ -32,7 +47,7 @@ export class MicroContentEngine {
   private pickCard(input: EngineInput): MicroCard {
     const candidates = cards.filter((card) => !this.recentIds.has(card.id));
     const pool = candidates.length > 0 ? candidates : cards;
-    const index = Math.floor(Math.random() * pool.length);
+    const index = Math.floor(this.random() * pool.length);
     const selected = pool[index];
 
     this.trackRecent(selected.id);
@@ -44,9 +59,24 @@ export class MicroContentEngine {
   }
 
   private pickVideo(): VideoCard {
-    const candidates = this.videos.filter((v) => !this.recentIds.has(v.id));
-    const pool = candidates.length > 0 ? candidates : this.videos;
-    const index = Math.floor(Math.random() * pool.length);
+    const selected = this.pickVideoOrNull();
+
+    if (!selected) {
+      throw new Error("microreel: no videos available");
+    }
+
+    return selected;
+  }
+
+  private pickVideoOrNull(): VideoCard | null {
+    const availableVideos = this.videos.filter((video) => !this.unavailableVideoIds.has(video.youtubeId));
+    if (availableVideos.length === 0) {
+      return null;
+    }
+
+    const candidates = availableVideos.filter((video) => !this.recentIds.has(video.id));
+    const pool = candidates.length > 0 ? candidates : availableVideos;
+    const index = Math.floor(this.random() * pool.length);
     const selected = pool[index];
 
     this.trackRecent(selected.id);

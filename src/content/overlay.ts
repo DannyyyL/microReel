@@ -1,4 +1,5 @@
 import { MicroCard, OverlayPosition, VideoCard } from "../shared/types";
+import { AudioPreferenceState, resolveVideoMuted } from "../shared/audio";
 
 const GEOMETRY_KEY = "microreel.geometry";
 const MIN_WIDTH = 200;
@@ -11,11 +12,18 @@ const FALLBACK_BUFFER_MS = 2000;
 const IFRAME_CLEAR_DELAY_MS = 260;
 const PRELOAD_NUDGES_MS = [400, 1200];
 const FULL_LOAD_NUDGES_MS = [700, 1600];
+const UNAVAILABLE_VIDEO_ERROR_CODES = new Set([2, 100, 101, 150]);
+const VIDEO_STARTED_GUARD_MS = 2500;
 
 interface StoredGeometry {
   left: number;
   top: number;
   width: number;
+}
+
+interface VideoCallbacks {
+  onEnded?: () => void;
+  onUnavailable?: () => void;
 }
 
 export class OverlayRenderer {
@@ -24,15 +32,23 @@ export class OverlayRenderer {
   private readonly wrap: HTMLDivElement;
   private readonly cardEl: HTMLDivElement;
   private readonly videoWrap: HTMLDivElement;
-  private readonly videoIframe: HTMLIFrameElement;
+  private videoIframe: HTMLIFrameElement;
+  private nextIframe: HTMLIFrameElement;
   private readonly iframeCover: HTMLDivElement;
   private playNudgeTimers: number[] = [];
   private onVideoEndedCallback: (() => void) | null = null;
+  private onVideoUnavailableCallback: (() => void) | null = null;
   private fallbackTimer: number | null = null;
+  private iframeClearTimer: number | null = null;
   private listeningInterval: number | null = null;
   private readonly messageHandler: (event: MessageEvent) => void;
   private readonly keydownHandler: (event: KeyboardEvent) => void;
   private preloadedVideoId: string | null = null;
+  private audioState: AudioPreferenceState = {
+    pageMuted: false,
+    extensionMuted: false
+  };
+  private videoStarted = false;
   // Ignore ended events briefly after loading a new video to prevent
   // YouTube's rapid onStateChange=0 + infoDelivery double-fire from chaining twice.
   private videoTransitionUntil = 0;
@@ -289,13 +305,14 @@ export class OverlayRenderer {
 
     this.videoWrap = document.createElement("div");
     this.videoWrap.className = "video-wrap";
-    this.videoIframe = document.createElement("iframe");
-    this.videoIframe.allow = "autoplay; encrypted-media";
-    this.videoIframe.setAttribute("allowfullscreen", "");
+    this.videoIframe = this.createIframe();
+    this.nextIframe = this.createIframe();
+    // The next iframe sits behind the active one, hidden, preloading the next video.
+    this.nextIframe.style.display = "none";
     this.iframeCover = document.createElement("div");
     this.iframeCover.className = "iframe-cover";
 
-    this.videoWrap.append(this.videoIframe, this.iframeCover);
+    this.videoWrap.append(this.videoIframe, this.nextIframe, this.iframeCover);
 
     // Resize handle
     const resizeHandle = document.createElement("div");
@@ -312,14 +329,28 @@ export class OverlayRenderer {
         if (typeof data !== "object" || data === null) {
           return;
         }
-        // Guard: ignore ended events within 3s of starting a new video to prevent
-        // YouTube's near-simultaneous onStateChange+infoDelivery double-fire.
-        if (Date.now() < this.videoTransitionUntil) {
+        const errorCode = data.event === "onError" && typeof data.info === "number"
+          ? data.info
+          : null;
+        if (errorCode !== null && UNAVAILABLE_VIDEO_ERROR_CODES.has(errorCode)) {
+          this.triggerUnavailable();
+          return;
+        }
+        const started =
+          (data.event === "onStateChange" && (data.info === 1 || data.info === 2)) ||
+          (data.event === "infoDelivery" && (data.info?.playerState === 1 || data.info?.playerState === 2));
+        if (started) {
+          this.videoStarted = true;
           return;
         }
         const ended =
           (data.event === "onStateChange" && data.info === 0) ||
           (data.event === "infoDelivery" && data.info?.playerState === 0);
+        // Guard: ignore ended events within 3s of starting a new video to prevent
+        // YouTube's near-simultaneous onStateChange+infoDelivery double-fire.
+        if (ended && Date.now() < this.videoTransitionUntil) {
+          return;
+        }
         if (ended) {
           this.triggerEnded();
         }
@@ -497,6 +528,7 @@ export class OverlayRenderer {
   }
 
   unmount(): void {
+    this.cancelIframeClear();
     this.stopListeningHandshake();
     window.removeEventListener("message", this.messageHandler);
     window.removeEventListener("keydown", this.keydownHandler);
@@ -509,12 +541,36 @@ export class OverlayRenderer {
     this.wrap.classList.toggle("side-right", position === "side-right");
   }
 
+  setAudioState(audioState: AudioPreferenceState): void {
+    this.audioState = audioState;
+
+    if (!this.videoWrap.classList.contains("visible")) {
+      return;
+    }
+
+    if (resolveVideoMuted(audioState)) {
+      this.muteVideo();
+    } else {
+      this.unmuteVideo();
+      this.nudgePlay();
+    }
+  }
+
   /** Start buffering a video while it is still hidden, so showVideo is instant. */
   preloadVideo(video: VideoCard): void {
+    this.cancelIframeClear();
     if (this.preloadedVideoId === video.youtubeId) return; // already loaded
     this.preloadedVideoId = video.youtubeId;
+
+    // Determine which iframe to preload into:
+    // - If the active iframe is currently showing a video, use the nextIframe (double-buffer).
+    // - Otherwise use the primary videoIframe (cold start / idle preload).
+    const target = this.videoWrap.classList.contains("visible")
+      ? this.nextIframe
+      : this.videoIframe;
+
     // autoplay=0 buffers without playing; muted avoids autoplay policy issues
-    this.videoIframe.src = `https://www.youtube.com/embed/${video.youtubeId}?autoplay=0&mute=1&controls=1&modestbranding=1&playsinline=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
+    target.src = `https://www.youtube.com/embed/${video.youtubeId}?autoplay=0&mute=1&controls=1&modestbranding=1&playsinline=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
   }
 
   show(card: MicroCard): void {
@@ -546,6 +602,7 @@ export class OverlayRenderer {
     }
     const cb = this.onVideoEndedCallback;
     this.onVideoEndedCallback = null;
+    this.onVideoUnavailableCallback = null;
     cb?.();
     // Allow future end events after the callback finishes
     queueMicrotask(() => {
@@ -553,10 +610,41 @@ export class OverlayRenderer {
     });
   }
 
-  showVideo(video: VideoCard, onEnded?: () => void): void {
+  private triggerUnavailable(): void {
+    if (this.endingGuard) {
+      return;
+    }
+    this.endingGuard = true;
+    if (this.fallbackTimer !== null) {
+      window.clearTimeout(this.fallbackTimer);
+      this.fallbackTimer = null;
+    }
+    this.clearPlayNudges();
+    this.stopListeningHandshake();
+    this.videoStarted = false;
+    this.onVideoEndedCallback = null;
+    this.preloadedVideoId = null;
+    const callback = this.onVideoUnavailableCallback;
+    this.onVideoUnavailableCallback = null;
+    callback?.();
+    queueMicrotask(() => {
+      this.endingGuard = false;
+    });
+  }
+
+  private cancelIframeClear(): void {
+    if (this.iframeClearTimer !== null) {
+      window.clearTimeout(this.iframeClearTimer);
+      this.iframeClearTimer = null;
+    }
+  }
+
+  showVideo(video: VideoCard, callbacks?: VideoCallbacks): void {
     this.hide();
     this.wrap.classList.add("video-active");
-    this.onVideoEndedCallback = onEnded ?? null;
+    this.cancelIframeClear();
+    this.onVideoEndedCallback = callbacks?.onEnded ?? null;
+    this.onVideoUnavailableCallback = callbacks?.onUnavailable ?? null;
     if (this.fallbackTimer !== null) window.clearTimeout(this.fallbackTimer);
     this.fallbackTimer = window.setTimeout(() => {
       this.fallbackTimer = null;
@@ -565,16 +653,19 @@ export class OverlayRenderer {
     // Suppress ended events for the first 3s after loading a new video.
     this.videoTransitionUntil = Date.now() + VIDEO_TRANSITION_GUARD_MS;
     this.endingGuard = false;
+    this.videoStarted = false;
     this.clearPlayNudges();
 
     if (this.preloadedVideoId === video.youtubeId) {
-      // Already buffered — unmute and play via postMessage (no src reload needed)
+      // Already buffered — swap iframes if the preloaded video is in nextIframe
       this.preloadedVideoId = null;
+      this.swapToPreloadedIframe();
       try {
         this.videoIframe.contentWindow?.postMessage(
           JSON.stringify({ event: "command", func: "playVideo", args: "" }), "*"
         );
       } catch { /* iframe not ready yet, fallback to full load */ }
+      this.syncPlayerAudio();
       // Even with preload, occasionally YouTube sticks on thumbnail; nudge play twice.
       PRELOAD_NUDGES_MS.forEach((delay) => {
         this.playNudgeTimers.push(window.setTimeout(() => this.nudgePlay(), delay));
@@ -582,16 +673,22 @@ export class OverlayRenderer {
     } else {
       // No preload match — full load with autoplay
       this.preloadedVideoId = null;
-      this.videoIframe.src = `https://www.youtube.com/embed/${video.youtubeId}?autoplay=1&mute=1&loop=0&playlist=${video.youtubeId}&controls=1&modestbranding=1&playsinline=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
+      this.videoIframe.src = this.buildEmbedUrl(video, !resolveVideoMuted(this.audioState));
       // Nudge play after load in case autoplay is blocked.
       FULL_LOAD_NUDGES_MS.forEach((delay) => {
         this.playNudgeTimers.push(window.setTimeout(() => this.nudgePlay(), delay));
       });
+      this.playNudgeTimers.push(window.setTimeout(() => {
+        if (!this.videoStarted) {
+          this.triggerUnavailable();
+        }
+      }, VIDEO_STARTED_GUARD_MS));
     }
 
     this.videoWrap.classList.add("visible");
     this.wrap.classList.add("has-content");
     this.startListeningHandshake();
+    this.syncPlayerAudio();
   }
 
   hide(): void {
@@ -606,21 +703,52 @@ export class OverlayRenderer {
       window.clearTimeout(this.fallbackTimer);
       this.fallbackTimer = null;
     }
+    this.cancelIframeClear();
     this.clearPlayNudges();
     this.stopListeningHandshake();
     this.onVideoEndedCallback = null;
+    this.onVideoUnavailableCallback = null;
     this.preloadedVideoId = null;
+    this.videoStarted = false;
     this.videoWrap.classList.remove("visible");
     this.wrap.classList.remove("video-active");
     if (!this.cardEl.classList.contains("visible")) {
       this.wrap.classList.remove("has-content");
     }
-    window.setTimeout(() => { this.videoIframe.src = ""; }, IFRAME_CLEAR_DELAY_MS);
+    this.iframeClearTimer = window.setTimeout(() => {
+      this.iframeClearTimer = null;
+      this.videoIframe.src = "";
+      this.nextIframe.src = "";
+      this.nextIframe.style.display = "none";
+    }, IFRAME_CLEAR_DELAY_MS);
   }
 
   hideAll(): void {
     this.hide();
     this.hideVideo();
+  }
+
+  /**
+   * Swap the nextIframe into the active role if the preloaded video
+   * was loaded there (i.e. while a previous video was still visible).
+   */
+  private swapToPreloadedIframe(): void {
+    // If the preloaded content is in the nextIframe (double-buffer case),
+    // swap them so videoIframe is now the one with the preloaded video.
+    if (this.nextIframe.src && !this.videoIframe.src) {
+      // Cold start — preload went into videoIframe, nothing to swap
+      return;
+    }
+    // Check if next iframe has content (was used for preloading)
+    if (this.nextIframe.src) {
+      const oldActive = this.videoIframe;
+      this.videoIframe = this.nextIframe;
+      this.nextIframe = oldActive;
+      // Show the new active, hide the old
+      this.videoIframe.style.display = "";
+      this.nextIframe.style.display = "none";
+      this.nextIframe.src = "";
+    }
   }
 
   private nudgePlay(): void {
@@ -632,6 +760,61 @@ export class OverlayRenderer {
     } catch {
       // iframe not ready yet
     }
+  }
+
+  private muteVideo(): void {
+    try {
+      this.videoIframe.contentWindow?.postMessage(
+        JSON.stringify({ event: "command", func: "mute", args: [] }),
+        "*"
+      );
+    } catch {
+      // iframe not ready yet
+    }
+  }
+
+  private unmuteVideo(): void {
+    try {
+      this.videoIframe.contentWindow?.postMessage(
+        JSON.stringify({ event: "command", func: "unMute", args: [] }),
+        "*"
+      );
+    } catch {
+      // iframe not ready yet
+    }
+  }
+
+  private syncPlayerAudio(): void {
+    if (resolveVideoMuted(this.audioState)) {
+      this.muteVideo();
+      return;
+    }
+
+    this.unmuteVideo();
+  }
+
+  private createIframe(): HTMLIFrameElement {
+    const iframe = document.createElement("iframe");
+    iframe.allow = "autoplay; encrypted-media";
+    iframe.setAttribute("allowfullscreen", "");
+    return iframe;
+  }
+
+  private buildEmbedUrl(video: VideoCard, autoplay: boolean): string {
+    const params = new URLSearchParams({
+      autoplay: autoplay ? "1" : "0",
+      mute: resolveVideoMuted(this.audioState) ? "1" : "0",
+      loop: "0",
+      playlist: video.youtubeId,
+      controls: "1",
+      modestbranding: "1",
+      playsinline: "1",
+      rel: "0",
+      enablejsapi: "1",
+      origin: location.origin
+    });
+
+    return `https://www.youtube.com/embed/${video.youtubeId}?${params.toString()}`;
   }
 
   private clearPlayNudges(): void {

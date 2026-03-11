@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev": "node scripts/build.mjs --watch",
+    "test": "tsx --test tests/**/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -14,9 +15,13 @@
   },
   "devDependencies": {
     "@types/chrome": "^0.0.292",
+    "@types/node": "^25.4.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "esbuild": "^0.24.2",
+    "happy-dom": "^20.8.3",
+    "sharp": "^0.34.5",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.3"
   }
 }
