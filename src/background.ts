@@ -1,8 +1,27 @@
 import { AUDIO_STATE_KEY, AudioPreferenceState, resolveVideoMuted } from "./shared/audio";
+import { getHostNameFromUrl } from "./shared/hosts";
 import { getSettings } from "./shared/settings";
 import { SessionEvent } from "./shared/types";
 
 const generatingTabs = new Set<number>();
+
+type BadgeState = "inactive" | "pending" | "showing";
+
+async function setBadgeState(tabId: number, state: BadgeState): Promise<void> {
+  if (state === "inactive") {
+    await chrome.action.setBadgeText({ tabId, text: "" });
+    return;
+  }
+
+  if (state === "pending") {
+    await chrome.action.setBadgeText({ tabId, text: "..." });
+    await chrome.action.setBadgeBackgroundColor({ tabId, color: "#4f46e5" });
+    return;
+  }
+
+  await chrome.action.setBadgeText({ tabId, text: "▶" });
+  await chrome.action.setBadgeBackgroundColor({ tabId, color: "#4f46e5" });
+}
 
 function getTabMutedInfo(tabId: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -57,6 +76,19 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.kind === "MICROREEL_BADGE_STATE") {
+    const tabId = sender.tab?.id;
+
+    if (typeof tabId === "number") {
+      void setBadgeState(tabId, message.state as BadgeState);
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    sendResponse({ ok: false });
+    return false;
+  }
+
   if (message?.kind === "MICROREEL_REQUEST_AUDIO_STATE") {
     const tabId = sender.tab?.id;
 
@@ -80,13 +112,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (typeof tabId === "number") {
     if (payload.type === "generating-start") {
       generatingTabs.add(tabId);
-      void chrome.action.setBadgeText({ tabId, text: "ON" });
-      void chrome.action.setBadgeBackgroundColor({ tabId, color: "#2563eb" });
     }
 
     if (payload.type === "generating-stop") {
       generatingTabs.delete(tabId);
-      void chrome.action.setBadgeText({ tabId, text: "" });
     }
   }
 
@@ -99,6 +128,11 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  const nextUrl = typeof changeInfo.url === "string" ? changeInfo.url : null;
+  if (nextUrl && !getHostNameFromUrl(nextUrl)) {
+    void setBadgeState(tabId, "inactive");
+  }
+
   if (typeof changeInfo.mutedInfo !== "undefined") {
     void syncAudioStateForTab(tabId);
   }

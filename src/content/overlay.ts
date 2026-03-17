@@ -14,6 +14,8 @@ const PRELOAD_NUDGES_MS = [400, 1200];
 const FULL_LOAD_NUDGES_MS = [700, 1600];
 const UNAVAILABLE_VIDEO_ERROR_CODES = new Set([2, 100, 101, 150]);
 const VIDEO_STARTED_GUARD_MS = 2500;
+const BRAND_INDIGO_RGB = "79, 70, 229";
+const UNMUTE_AFTER_START_MS = 220;
 
 interface StoredGeometry {
   left: number;
@@ -64,6 +66,7 @@ export class OverlayRenderer {
   private resizeStartWidth = 0;
   // Whether the user has manually positioned the overlay
   private hasMoved = false;
+  private hostName: string | null = null;
 
   private dragRaf: number | null = null;
   private resizeRaf: number | null = null;
@@ -94,12 +97,24 @@ export class OverlayRenderer {
         opacity: 1;
         pointer-events: auto;
         box-shadow:
-          0 0 0 1px rgba(255, 255, 255, 0.13),
-          0 8px 40px rgba(0, 0, 0, 0.55);
+          0 0 0 1px rgba(${BRAND_INDIGO_RGB}, 0.45),
+          0 0 0 4px rgba(${BRAND_INDIGO_RGB}, 0.12),
+          0 12px 42px rgba(${BRAND_INDIGO_RGB}, 0.24),
+          0 8px 40px rgba(0, 0, 0, 0.45);
       }
       .wrap.side-right {
         top: 50%;
         transform: translateY(-50%);
+      }
+      .wrap.copilot-default {
+        top: 88px;
+        right: 16px;
+        width: 272px;
+      }
+      .wrap.side-right.copilot-default {
+        top: 50%;
+        right: 16px;
+        width: 240px;
       }
 
       /* ── Drag handle — floats over top of content, always dim when content visible ── */
@@ -204,11 +219,12 @@ export class OverlayRenderer {
 
       /* ── Card — pointer-events: none so text clicks fall through to the page ── */
       .card {
-        background: rgba(17, 24, 39, 0.95);
+        background:
+          linear-gradient(180deg, rgba(28, 25, 54, 0.98), rgba(14, 18, 35, 0.96));
         color: #ffffff;
         border-radius: 14px;
         padding: 16px;
-        border: 1px solid rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(${BRAND_INDIGO_RGB}, 0.42);
         opacity: 0;
         transform: translateY(8px);
         transition: opacity 250ms ease, transform 250ms ease;
@@ -245,6 +261,10 @@ export class OverlayRenderer {
         pointer-events: none;
         background: #000;
         position: relative;
+        border: 1px solid rgba(${BRAND_INDIGO_RGB}, 0.42);
+        box-shadow:
+          inset 0 0 0 1px rgba(${BRAND_INDIGO_RGB}, 0.16),
+          0 0 28px rgba(${BRAND_INDIGO_RGB}, 0.18);
       }
       .video-wrap.visible {
         opacity: 1;
@@ -341,6 +361,13 @@ export class OverlayRenderer {
           (data.event === "infoDelivery" && (data.info?.playerState === 1 || data.info?.playerState === 2));
         if (started) {
           this.videoStarted = true;
+          if (!resolveVideoMuted(this.audioState)) {
+            window.setTimeout(() => {
+              if (this.videoStarted && this.videoWrap.classList.contains("visible")) {
+                this.unmuteVideo();
+              }
+            }, UNMUTE_AFTER_START_MS);
+          }
           return;
         }
         const ended =
@@ -456,6 +483,7 @@ export class OverlayRenderer {
     this.wrap.style.left = `${left}px`;
     this.wrap.style.top = `${top}px`;
     this.wrap.classList.remove("side-right");
+    this.wrap.classList.remove("copilot-default");
     this.hasMoved = true;
   }
 
@@ -527,6 +555,11 @@ export class OverlayRenderer {
     void this.loadGeometry();
   }
 
+  setHostName(hostName: string): void {
+    this.hostName = hostName;
+    this.wrap.classList.toggle("copilot-default", hostName === "copilot" && !this.hasMoved);
+  }
+
   unmount(): void {
     this.cancelIframeClear();
     this.stopListeningHandshake();
@@ -539,6 +572,7 @@ export class OverlayRenderer {
   setPosition(position: OverlayPosition): void {
     if (this.hasMoved) return;
     this.wrap.classList.toggle("side-right", position === "side-right");
+    this.wrap.classList.toggle("copilot-default", this.hostName === "copilot");
   }
 
   setAudioState(audioState: AudioPreferenceState): void {
@@ -551,7 +585,7 @@ export class OverlayRenderer {
     if (resolveVideoMuted(audioState)) {
       this.muteVideo();
     } else {
-      this.unmuteVideo();
+      this.muteVideo();
       this.nudgePlay();
     }
   }
@@ -673,7 +707,7 @@ export class OverlayRenderer {
     } else {
       // No preload match — full load with autoplay
       this.preloadedVideoId = null;
-      this.videoIframe.src = this.buildEmbedUrl(video, !resolveVideoMuted(this.audioState));
+      this.videoIframe.src = this.buildEmbedUrl(video, true);
       // Nudge play after load in case autoplay is blocked.
       FULL_LOAD_NUDGES_MS.forEach((delay) => {
         this.playNudgeTimers.push(window.setTimeout(() => this.nudgePlay(), delay));
@@ -790,7 +824,11 @@ export class OverlayRenderer {
       return;
     }
 
-    this.unmuteVideo();
+    if (this.videoStarted) {
+      this.unmuteVideo();
+    } else {
+      this.muteVideo();
+    }
   }
 
   private createIframe(): HTMLIFrameElement {
@@ -803,7 +841,7 @@ export class OverlayRenderer {
   private buildEmbedUrl(video: VideoCard, autoplay: boolean): string {
     const params = new URLSearchParams({
       autoplay: autoplay ? "1" : "0",
-      mute: resolveVideoMuted(this.audioState) ? "1" : "0",
+      mute: autoplay ? "1" : resolveVideoMuted(this.audioState) ? "1" : "0",
       loop: "0",
       playlist: video.youtubeId,
       controls: "1",

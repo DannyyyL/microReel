@@ -39,7 +39,7 @@ enabledEl.addEventListener("change", () => {
       ...settings,
       enabled: enabledEl.checked
     },
-    enabledEl.checked ? "MicroReel enabled" : "MicroReel paused"
+    enabledEl.checked ? "MicroReel is on" : "MicroReel is off"
   );
 });
 
@@ -138,7 +138,7 @@ function renderSiteContext(): void {
     ? siteEnabled
       ? `${hostLabel} can display MicroReel on this tab.`
       : `${hostLabel} is paused until you re-enable this site.`
-    : `The master switch is off, so ${hostLabel} stays paused until MicroReel is enabled again.`;
+    : `MicroReel is off, so ${hostLabel} stays paused until you turn it back on.`;
   contextEl.textContent = activeOnTab
     ? `${hostLabel} is ready on this tab.`
     : `${hostLabel} is currently paused on this tab.`;

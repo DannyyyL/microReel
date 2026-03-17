@@ -71,6 +71,7 @@ const adapters: HostAdapter[] = [
       'button[type="submit"]'
     ],
     stopButtonSelectors: [
+      'button[aria-label*="Stop response" i]',
       'button[aria-label*="Stop" i]',
       'button[aria-label*="Stop generating" i]',
       'button[aria-label*="Cancel" i]',
@@ -78,12 +79,13 @@ const adapters: HostAdapter[] = [
       'button[data-testid*="StopButton" i]'
     ],
     typingIndicatorSelectors: [
-      '[aria-label*="loading" i]',
-      '[data-testid*="loading" i]',
-      '[aria-live="polite"] [role="status"]',
+      '[aria-label*="Copilot is responding" i]',
+      '[aria-label*="Generating" i]',
+      '[data-testid*="copilot" i] [role="status"]',
+      '[data-testid*="copilot" i] [aria-busy="true"]',
+      'copilot-chat-messages [aria-busy="true"]',
       '.copilot-loading',
-      '.typing-indicator',
-      'svg[aria-label*="loading" i]'
+      '.typing-indicator'
     ],
     streamRootSelectors: [
       'copilot-chat-messages',

@@ -49,13 +49,19 @@ void (async () => {
   let preloadedResult: import("../shared/microContentEngine").EngineResult | null = null;
   let userManuallyClosed = false;
   let blockNextContent = false;
+  let overlayVisible = false;
   let audioState: AudioPreferenceState = {
     pageMuted: false,
     extensionMuted: settings.extensionMuted
   };
 
   overlay.mount();
-  overlay.setPosition(settings.position);
+  overlay.setHostName(activeAdapter.name);
+  if (activeAdapter.name === "copilot" && settings.position === "top-right") {
+    overlay.setPosition("side-right");
+  } else {
+    overlay.setPosition(settings.position);
+  }
   overlay.setAudioState(audioState);
 
   // ── Aggressive preloading at page load ──────────────────────────────────
@@ -98,6 +104,12 @@ void (async () => {
   }
 
   try {
+    const initialBadgeState = isFeatureEnabledForHost(settings, activeAdapter.name)
+      ? "pending"
+      : "inactive";
+    chrome.runtime.sendMessage({ kind: "MICROREEL_BADGE_STATE", state: initialBadgeState }, () => {
+      void chrome.runtime.lastError;
+    });
     chrome.runtime.sendMessage({ kind: "MICROREEL_REQUEST_AUDIO_STATE" }, () => {
       void chrome.runtime.lastError;
     });
@@ -127,30 +139,46 @@ void (async () => {
     return isFeatureEnabledForHost(settings, activeAdapter.name);
   }
 
+  function updateBadgeState(): void {
+    if (!contextAlive) {
+      return;
+    }
+
+    const state = !isActiveOnCurrentSite()
+      ? "inactive"
+      : overlayVisible
+        ? "showing"
+        : "pending";
+
+    try {
+      chrome.runtime.sendMessage({ kind: "MICROREEL_BADGE_STATE", state }, () => {
+        void chrome.runtime.lastError;
+      });
+    } catch {
+      contextAlive = false;
+      shutdown();
+    }
+  }
+
   // Listen for manual close events from the overlay
   document.getElementById("microreel-root")?.addEventListener("microreel-manual-close", () => {
     userManuallyClosed = true;
     cleanupTimers();
   });
 
-  // Proactively detect context invalidation via a persistent port.
-  // When the extension is reloaded the port disconnects immediately.
-  try {
-    const port = chrome.runtime.connect({ name: "microreel-keepalive" });
-    port.onDisconnect.addListener(() => {
-      contextAlive = false;
-      shutdown();
-    });
-  } catch {
-    // Already invalidated before we even started – bail out.
-    return;
-  }
-
   function shutdown(): void {
     pendingHide = false;
     activeGenerationCount = 0;
     cleanupTimers();
+    overlayVisible = false;
     overlay.hideAll();
+    try {
+      chrome.runtime.sendMessage({ kind: "MICROREEL_BADGE_STATE", state: "inactive" }, () => {
+        void chrome.runtime.lastError;
+      });
+    } catch {
+      // ignore badge cleanup errors during shutdown
+    }
     overlay.unmount();
     preloadQueue.dispose();
     detector?.stop();
@@ -165,7 +193,11 @@ void (async () => {
       ...audioState,
       extensionMuted: settings.extensionMuted
     };
-    overlay.setPosition(settings.position);
+    if (activeAdapter.name === "copilot" && settings.position === "top-right") {
+      overlay.setPosition("side-right");
+    } else {
+      overlay.setPosition(settings.position);
+    }
     overlay.setAudioState(audioState);
     if (!isActiveOnCurrentSite()) {
       if (activeGenerationCount > 0) {
@@ -175,8 +207,10 @@ void (async () => {
       pendingHide = false;
       blockNextContent = false;
       cleanupTimers();
+      overlayVisible = false;
       overlay.hideAll();
     }
+    updateBadgeState();
   });
 
   function emit(type: SessionEvent["type"]): void {
@@ -236,12 +270,16 @@ void (async () => {
 
       if (video) {
         videoFinished = false;
+        overlayVisible = true;
+        updateBadgeState();
         overlay.showVideo(video, {
           onEnded: () => {
             videoFinished = true;
             if (pendingHide || blockNextContent) {
               pendingHide = false;
+              overlayVisible = false;
               overlay.hideAll();
+              updateBadgeState();
             } else if (activeGenerationCount > 0) {
               showNextContent();
             }
@@ -266,12 +304,16 @@ void (async () => {
     preloadedResult = null;
     if (result.kind === "video") {
       videoFinished = false;
+      overlayVisible = true;
+      updateBadgeState();
       overlay.showVideo(result.video, {
         onEnded: () => {
           videoFinished = true;
           if (pendingHide || blockNextContent) {
             pendingHide = false;
+            overlayVisible = false;
             overlay.hideAll();
+            updateBadgeState();
           } else if (activeGenerationCount > 0) {
             showNextContent();
           }
@@ -281,7 +323,9 @@ void (async () => {
         }
       });
     } else {
+      overlayVisible = true;
       overlay.show(result.card);
+      updateBadgeState();
     }
   }
 
@@ -293,7 +337,9 @@ void (async () => {
     }
 
     if (settings.mode !== "entertainment") {
+      overlayVisible = false;
       overlay.hideAll();
+      updateBadgeState();
       return;
     }
 
@@ -307,7 +353,9 @@ void (async () => {
 
     pendingHide = false;
     videoFinished = true;
+    overlayVisible = false;
     overlay.hideAll();
+    updateBadgeState();
   }
 
   const detector = new GenerationDetector(activeAdapter, {
@@ -340,6 +388,7 @@ void (async () => {
         videoFinished = false;
         generationStartedAt = Date.now();
         emit("generating-start");
+        updateBadgeState();
         return;
       }
       pendingHide = false;
@@ -347,6 +396,7 @@ void (async () => {
       generationStartedAt = Date.now();
       emit("generating-start");
       cleanupTimers();
+      updateBadgeState();
 
       // In entertainment mode, the video is already preloaded (iframe buffered
       // at page load or after the previous video started). Just grab the next
@@ -394,6 +444,8 @@ void (async () => {
 
       if (userManuallyClosed) {
         userManuallyClosed = false;
+        overlayVisible = false;
+        updateBadgeState();
         return;
       }
 
@@ -407,7 +459,9 @@ void (async () => {
           // Show the card for one rotation cycle, then hide.
           rotationTimer = window.setTimeout(() => {
             rotationTimer = null;
+            overlayVisible = false;
             overlay.hideAll();
+            updateBadgeState();
           }, settings.rotationMs);
         }
         return;
@@ -415,21 +469,27 @@ void (async () => {
 
       if (settings.stopOnHostDone) {
         // User opted to stop immediately when host finishes.
+        overlayVisible = false;
         overlay.hideAll();
+        updateBadgeState();
         return;
       }
 
       if (settings.mode === "entertainment") {
         if (videoFinished) {
           // Video already ended — hide immediately.
+          overlayVisible = false;
           overlay.hideAll();
+          updateBadgeState();
         } else {
           // Let the current video finish before hiding.
           // The onEnded callback checks blockNextContent and will hideAll.
           pendingHide = true;
         }
       } else {
+        overlayVisible = false;
         overlay.hideAll();
+        updateBadgeState();
       }
 
       // Re-preload for the next generation cycle.
