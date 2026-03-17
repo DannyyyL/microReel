@@ -181,25 +181,27 @@ export function App(): JSX.Element {
             <p>Global rules that apply before any site-specific toggle is checked.</p>
           </div>
 
-          <label className="toggle-row">
+          <div className="toggle-row">
             <span className="copy">
               <span className="field-title">Show MicroReel</span>
               <span className="field-body">
                 Turn MicroReel on or off everywhere without changing your site preferences.
               </span>
             </span>
-            <input
-              className="toggle-input"
-              type="checkbox"
-              checked={settings.enabled}
-              onChange={(event) =>
-                patchSettings((prev) => ({
-                  ...prev,
-                  enabled: event.target.checked
-                }))
-              }
-            />
-          </label>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={settings.enabled}
+                onChange={(event) =>
+                  patchSettings((prev) => ({
+                    ...prev,
+                    enabled: event.target.checked
+                  }))
+                }
+              />
+              <span className="slider"></span>
+            </label>
+          </div>
 
           <div className="field-grid">
             <label className="field">
@@ -265,45 +267,49 @@ export function App(): JSX.Element {
             </label>
           </div>
 
-          <label className="toggle-row toggle-row--spaced">
+          <div className="toggle-row toggle-row--spaced">
             <span className="copy">
               <span className="field-title">Stop when host stops</span>
               <span className="field-body">
                 Hide instantly when the AI response ends instead of letting content finish naturally.
               </span>
             </span>
-            <input
-              className="toggle-input"
-              type="checkbox"
-              checked={settings.stopOnHostDone}
-              onChange={(event) =>
-                patchSettings((prev) => ({
-                  ...prev,
-                  stopOnHostDone: event.target.checked
-                }))
-              }
-            />
-          </label>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={settings.stopOnHostDone}
+                onChange={(event) =>
+                  patchSettings((prev) => ({
+                    ...prev,
+                    stopOnHostDone: event.target.checked
+                  }))
+                }
+              />
+              <span className="slider"></span>
+            </label>
+          </div>
 
-          <label className="toggle-row toggle-row--spaced">
+          <div className="toggle-row toggle-row--spaced">
             <span className="copy">
               <span className="field-title">Mute MicroReel audio</span>
               <span className="field-body">
                 Keep the extension silent even when the current tab itself is not muted.
               </span>
             </span>
-            <input
-              className="toggle-input"
-              type="checkbox"
-              checked={settings.extensionMuted}
-              onChange={(event) =>
-                patchSettings((prev) => ({
-                  ...prev,
-                  extensionMuted: event.target.checked
-                }))
-              }
-            />
-          </label>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={settings.extensionMuted}
+                onChange={(event) =>
+                  patchSettings((prev) => ({
+                    ...prev,
+                    extensionMuted: event.target.checked
+                  }))
+                }
+              />
+              <span className="slider"></span>
+            </label>
+          </div>
         </section>
 
         <section className="panel">

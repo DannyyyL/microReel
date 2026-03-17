@@ -230,7 +230,35 @@ body {
 }
 
 /* Inputs & Form Controls */
-.toggle-input,
+.toggle { position: relative; width: 36px; height: 20px; display: inline-block; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; margin: 0; position: absolute; }
+.slider {
+  position: absolute; inset: 0;
+  background: var(--line-strong); 
+  border-radius: 20px;
+  transition: background 150ms;
+  cursor: pointer;
+}
+.slider::before {
+  content: "";
+  position: absolute;
+  width: 14px; height: 14px;
+  left: 3px; top: 3px;
+  background: #fff; 
+  border-radius: 50%;
+  transition: transform 150ms;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+.toggle input:checked + .slider {
+  background: var(--accent);
+}
+.toggle input:checked + .slider::before { transform: translateX(16px); }
+.toggle input:focus-visible + .slider {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
 .site-card input {
   width: 20px;
   height: 20px;

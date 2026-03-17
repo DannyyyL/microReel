@@ -124,8 +124,8 @@
       font-family: inherit;
       transition: border-color 150ms;
     }
-    .toggle { position: relative; width: 36px; height: 20px; }
-    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle { position: relative; width: 36px; height: 20px; display: inline-block; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; margin: 0; position: absolute; }
     .slider {
       position: absolute; inset: 0;
       background: var(--line-strong); 
@@ -218,7 +218,7 @@
           <p>Turn MicroReel on or off everywhere.</p>
         </div>
         <label class="toggle">
-          <input type="checkbox" id="enabled">
+          <input type="checkbox" id="enabled" checked>
           <span class="slider"></span>
         </label>
       </div>
@@ -229,7 +229,7 @@
           <p id="site-hint">Current tab controls appear here.</p>
         </div>
         <label class="toggle">
-          <input type="checkbox" id="site-enabled">
+          <input type="checkbox" id="site-enabled" checked>
           <span class="slider"></span>
         </label>
       </div>
@@ -242,7 +242,7 @@
         <div>
           <select id="mode">
             <option value="education">Education</option>
-            <option value="entertainment">Entertainment</option>
+            <option value="entertainment" selected>Entertainment</option>
           </select>
         </div>
       </div>
