@@ -4,8 +4,14 @@ import path from "path";
 const API_KEY = process.env.YOUTUBE_API_KEY;
 const OUTPUT_FILE = path.join(process.cwd(), "content", "videos.json");
 
-// A few search terms to find relevant developer/tech shorts
-const SEARCH_QUERIES = ["#shorts software engineering", "#shorts programming", "#shorts developer"];
+// General entertainment search queries
+const SEARCH_QUERIES = [
+  "#shorts family guy", 
+  "#shorts timelapse", 
+  "#shorts satisfying", 
+  "#shorts which room",
+  "#shorts funny clips"
+];
 const MAX_RESULTS_PER_QUERY = 5;
 
 async function fetchShorts() {
@@ -72,10 +78,10 @@ async function fetchShorts() {
     // If it doesn't exist or is invalid, start fresh
   }
 
-  // Merge them (preferring new ones, but keeping max ~20 to prevent infinite growth)
+  // Merge them (preferring new ones, but keeping max ~50 to prevent infinite growth)
   const merged = [...allVideos];
   for (const ev of existingVideos) {
-    if (!seenIds.has(ev.youtubeId) && merged.length < 20) {
+    if (!seenIds.has(ev.youtubeId) && merged.length < 50) {
       merged.push(ev);
       seenIds.add(ev.youtubeId);
     }
