@@ -14,6 +14,7 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const UNAVAILABLE_VIDEO_KEY = "microreel.videos.unavailable";
 const UNAVAILABLE_VIDEO_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const YOUTUBE_OEMBED_URL = "https://www.youtube.com/oembed";
+const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 
 interface VideoCache {
   fetchedAt: number;
@@ -44,7 +45,7 @@ function normalizeVideoList(value: unknown): VideoCard[] {
         ? Math.max(5_000, Math.round(candidate.ttlMs))
         : 30_000;
 
-    if (!id || !title || !youtubeId || seenYoutubeIds.has(youtubeId)) {
+    if (!id || !title || !youtubeId || !YOUTUBE_ID_RE.test(youtubeId) || seenYoutubeIds.has(youtubeId)) {
       continue;
     }
 

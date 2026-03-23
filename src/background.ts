@@ -1,11 +1,13 @@
 import { AUDIO_STATE_KEY, AudioPreferenceState, resolveVideoMuted } from "./shared/audio";
 import { getHostNameFromUrl } from "./shared/hosts";
 import { getSettings } from "./shared/settings";
-import { SessionEvent } from "./shared/types";
 
 const generatingTabs = new Set<number>();
+const MAX_GENERATING_TABS = 64;
 
 type BadgeState = "inactive" | "pending" | "showing";
+const VALID_BADGE_STATES = new Set<string>(["inactive", "pending", "showing"]);
+const VALID_EVENT_TYPES = new Set<string>(["submitted", "generating-start", "generating-stop"]);
 
 async function setBadgeState(tabId: number, state: BadgeState): Promise<void> {
   if (state === "inactive") {
@@ -76,11 +78,18 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.kind === "MICROREEL_BADGE_STATE") {
-    const tabId = sender.tab?.id;
+  if (!message || typeof message !== "object" || typeof message.kind !== "string") {
+    return;
+  }
 
-    if (typeof tabId === "number") {
-      void setBadgeState(tabId, message.state as BadgeState);
+  if (message.kind === "MICROREEL_BADGE_STATE") {
+    const tabId = sender.tab?.id;
+    const state = typeof message.state === "string" && VALID_BADGE_STATES.has(message.state)
+      ? (message.state as BadgeState)
+      : null;
+
+    if (typeof tabId === "number" && state) {
+      void setBadgeState(tabId, state);
       sendResponse({ ok: true });
       return true;
     }
@@ -89,7 +98,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
-  if (message?.kind === "MICROREEL_REQUEST_AUDIO_STATE") {
+  if (message.kind === "MICROREEL_REQUEST_AUDIO_STATE") {
     const tabId = sender.tab?.id;
 
     if (typeof tabId === "number") {
@@ -102,16 +111,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
-  if (message?.kind !== "MICROREEL_EVENT") {
+  if (message.kind !== "MICROREEL_EVENT") {
     return;
   }
 
-  const payload = message.payload as SessionEvent;
+  const payload = message.payload;
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    typeof payload.type !== "string" ||
+    !VALID_EVENT_TYPES.has(payload.type)
+  ) {
+    sendResponse({ ok: false });
+    return false;
+  }
+
   const tabId = sender.tab?.id;
 
   if (typeof tabId === "number") {
     if (payload.type === "generating-start") {
-      generatingTabs.add(tabId);
+      if (generatingTabs.size < MAX_GENERATING_TABS) {
+        generatingTabs.add(tabId);
+      }
     }
 
     if (payload.type === "generating-stop") {

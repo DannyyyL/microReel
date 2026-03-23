@@ -16,6 +16,7 @@ const UNAVAILABLE_VIDEO_ERROR_CODES = new Set([2, 100, 101, 150]);
 const VIDEO_STARTED_GUARD_MS = 2500;
 const BRAND_INDIGO_RGB = "79, 70, 229";
 const UNMUTE_AFTER_START_MS = 220;
+const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 
 interface StoredGeometry {
   left: number;
@@ -593,6 +594,7 @@ export class OverlayRenderer {
   /** Start buffering a video while it is still hidden, so showVideo is instant. */
   preloadVideo(video: VideoCard): void {
     this.cancelIframeClear();
+    if (!YOUTUBE_ID_RE.test(video.youtubeId)) return; // reject invalid IDs
     if (this.preloadedVideoId === video.youtubeId) return; // already loaded
     this.preloadedVideoId = video.youtubeId;
 
@@ -674,6 +676,7 @@ export class OverlayRenderer {
   }
 
   showVideo(video: VideoCard, callbacks?: VideoCallbacks): void {
+    if (!YOUTUBE_ID_RE.test(video.youtubeId)) return; // reject invalid IDs
     this.hide();
     this.wrap.classList.add("video-active");
     this.cancelIframeClear();

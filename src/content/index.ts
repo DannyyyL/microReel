@@ -50,6 +50,9 @@ void (async () => {
   let userManuallyClosed = false;
   let blockNextContent = false;
   let overlayVisible = false;
+  let lastGenerationStartAt = 0;
+  const GENERATION_COOLDOWN_MS = 2000;
+  const MAX_ACTIVE_GENERATIONS = 4;
   let audioState: AudioPreferenceState = {
     pageMuted: false,
     extensionMuted: settings.extensionMuted
@@ -118,8 +121,12 @@ void (async () => {
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.kind !== "MICROREEL_GET_PAGE_CONTEXT") {
-      if (message?.kind === "MICROREEL_AUDIO_STATE" && message.audioState) {
+    if (!message || typeof message !== "object" || typeof message.kind !== "string") {
+      return;
+    }
+
+    if (message.kind !== "MICROREEL_GET_PAGE_CONTEXT") {
+      if (message.kind === "MICROREEL_AUDIO_STATE" && message.audioState) {
         audioState = {
           pageMuted: Boolean(message.audioState.pageMuted),
           extensionMuted: Boolean(message.audioState.extensionMuted)
@@ -378,6 +385,16 @@ void (async () => {
       if (!contextAlive || !isActiveOnCurrentSite()) {
         return;
       }
+      // Rate-limit: ignore rapid-fire starts within the cooldown window.
+      const now = Date.now();
+      if (now - lastGenerationStartAt < GENERATION_COOLDOWN_MS) {
+        return;
+      }
+      // Cap concurrent generations to prevent unbounded stacking.
+      if (activeGenerationCount >= MAX_ACTIVE_GENERATIONS) {
+        return;
+      }
+      lastGenerationStartAt = now;
       blockNextContent = false;
       activeGenerationCount++;
       userManuallyClosed = false; // Reset manual close state on new prompt

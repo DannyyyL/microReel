@@ -180,7 +180,7 @@ test("OverlayRenderer reports unavailable YouTube embeds", async () => {
       {
         id: "bad-video",
         title: "Missing video",
-        youtubeId: "missing123",
+        youtubeId: "missing1234",
         ttlMs: 20_000
       },
       {
