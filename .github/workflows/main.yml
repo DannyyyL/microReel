@@ -30,7 +30,7 @@ jobs:
         run: node scripts/generate-videos.mjs
 
       - name: Run tests
-        run: npm test -- --run
+        run: npm test
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
