@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "MicroReel",
-  "version": "0.1.0",
-  "description": "Micro learning cards while AI is generating.",
+  "version": "0.2.0",
+  "description": "YT Shorts while AI is generating.",
   "permissions": [
     "activeTab",
     "tabs",

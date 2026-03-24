@@ -367,6 +367,13 @@ button:focus-visible {
   display: block;
 }
 
+.site-logo-image {
+  width: 24px;
+  height: 24px;
+  display: block;
+  object-fit: contain;
+}
+
 .site-logo-letter {
   font-size: 16px;
   font-weight: 700;
@@ -405,6 +412,12 @@ button:focus-visible {
   background: #fff7ed;
   color: #c2410c;
   border-color: rgba(194, 65, 12, 0.12);
+}
+
+.site-card--coral .site-logo {
+  background: #fff1ee;
+  color: #da7756;
+  border-color: rgba(218, 119, 86, 0.15);
 }
 
 .site-card--violet .site-logo {

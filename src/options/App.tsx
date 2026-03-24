@@ -14,19 +14,33 @@ const initialSettings: MicroReelSettings = {
   siteEnabled: { ...defaultSettings.siteEnabled }
 };
 
-function HostLogo({ host }: { host: HostName }): JSX.Element {
+const hostLogoFiles: Record<HostName, string> = {
+  chatgpt: "logos/ChatGPTLogo.png",
+  claude: "logos/ClaudeLogo.png",
+  gemini: "logos/GeminiLogo.png",
+  copilot: "logos/GithubCopilotLogo.png"
+};
+
+function HostLogoFallback({ host }: { host: HostName }): JSX.Element {
   switch (host) {
     case "chatgpt":
       return (
         <svg viewBox="0 0 24 24" aria-hidden="true" className="site-logo-svg">
           <path
             fill="currentColor"
-            d="M12 1.75a4.6 4.6 0 0 1 4.48 3.55 4.6 4.6 0 0 1 4.46 7.1 4.6 4.6 0 0 1-1.56 6.26 4.6 4.6 0 0 1-6.7 3.77 4.6 4.6 0 0 1-7.06-2.7 4.6 4.6 0 0 1-2.56-7.82 4.6 4.6 0 0 1 2.88-7.54A4.6 4.6 0 0 1 12 1.75Zm-2.9 5.12-1.38.8a2.63 2.63 0 0 0-1.06 3.58l.19.34 2.25-1.3V7.5l-.01-.63Zm5.37.12v2.62l2.28 1.31.2-.34a2.63 2.63 0 0 0-.7-3.43l-.35-.22-1.43-.82Zm-2.45 1.42-2.26 1.31v2.58l2.24 1.29 2.26-1.3V9.7l-2.24-1.29Zm-4.4 5.73-.2.34a2.63 2.63 0 0 0 1 3.61l1.44.84 2.25-1.3v-2.62l-2.28-1.31-2.22 1.28Zm8.76.02-2.25 1.3v2.62l2.25 1.3 1.39-.8a2.63 2.63 0 0 0 1.06-3.58l-.2-.35-2.25-1.3Zm-4.36 5.04-2.25 1.3.2.34a2.63 2.63 0 0 0 3.45 1l.35-.18 1.43-.82v-2.6l-2.24-1.3-.94.55Zm1.44-1.38v2.59l.92-.53 1.35-.78a2.63 2.63 0 0 0 1.03-3.47l-.18-.35-2.26-1.3-2.24 1.3v2.54l1.38.8Z"
+            d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973V11.6a.766.766 0 0 0 .388.676l5.815 3.355-2.02 1.168a.076.076 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.076.076 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667zm2.01-3.023l-.141-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z"
           />
         </svg>
       );
     case "claude":
-      return <span className="site-logo-letter">C</span>;
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" className="site-logo-svg">
+          <path
+            fill="currentColor"
+            d="M4.709 15.955l4.397-2.076-3.191-1.727 4.042-.926L6.393 9.25l4.181-.263L8.27 6.622l3.974.488L11.009 3.9l3.382 1.86L14.09.76 16.8 4.206l1.142-3.078 1.473 3.91 2.27-2.428-.288 3.96 3.016-1.81-1.52 3.584 3.458-.6-2.65 2.867 3.377.774-3.477 1.8 2.721 2.058-3.814.378 1.535 3.28-3.424-1.296.133 3.988-2.538-2.68-1.217 3.622-1.544-3.591-2.32 2.947.366-3.792L9.3 19.24l1.587-3.523-3.474 1.77 2.6-3.5z"
+          />
+        </svg>
+      );
     case "gemini":
       return (
         <svg viewBox="0 0 24 24" aria-hidden="true" className="site-logo-svg">
@@ -50,12 +64,31 @@ function HostLogo({ host }: { host: HostName }): JSX.Element {
   }
 }
 
+function HostLogo({ host }: { host: HostName }): JSX.Element {
+  const [didFail, setDidFail] = useState(false);
+
+  if (!didFail) {
+    return (
+      <img
+        src={hostLogoFiles[host]}
+        alt=""
+        className="site-logo-image"
+        loading="lazy"
+        decoding="async"
+        onError={() => setDidFail(true)}
+      />
+    );
+  }
+
+  return <HostLogoFallback host={host} />;
+}
+
 function getSiteTone(host: HostName): string {
   switch (host) {
     case "chatgpt":
       return "emerald";
     case "claude":
-      return "amber";
+      return "coral";
     case "gemini":
       return "violet";
     case "copilot":
@@ -269,9 +302,9 @@ export function App(): JSX.Element {
 
           <div className="toggle-row toggle-row--spaced">
             <span className="copy">
-              <span className="field-title">Stop when host stops</span>
+              <span className="field-title">Close when AI finishes</span>
               <span className="field-body">
-                Hide instantly when the AI response ends instead of letting content finish naturally.
+                End MicroReel as soon as the AI response finishes, even if the current video has not ended yet.
               </span>
             </span>
             <label className="toggle">

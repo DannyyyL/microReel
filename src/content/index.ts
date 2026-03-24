@@ -455,12 +455,14 @@ void (async () => {
           preloadedResult = { kind: "video", video };
         }
         startTimer = window.setTimeout(() => {
+          startTimer = null;
           showNextContent();
         }, settings.startDelayMs);
         return;
       }
 
       startTimer = window.setTimeout(() => {
+        startTimer = null;
         showNextContent();
       }, settings.startDelayMs);
     },
@@ -491,21 +493,11 @@ void (async () => {
       }
 
       if (overlayNeverShown) {
-        // Generation was shorter than startDelayMs — show content now,
-        // then let it finish naturally before hiding.
-        if (settings.stopOnHostDone) {
-          overlayVisible = false;
-          overlay.hideAll();
-          updateBadgeState();
-          return;
-        }
-
-        preloadedResult = savedPreload;
-        showNextContent(true);
-        // blockNextContent is already true, so videos hide on onEnded.
-        if (settings.mode !== "entertainment") {
-          scheduleCardHideAfter(activeCardTtlMs || settings.rotationMs);
-        }
+        // Generation was shorter than startDelayMs — don't show new content
+        // after the prompt has already finished.
+        overlayVisible = false;
+        overlay.hideAll();
+        updateBadgeState();
         return;
       }
 
@@ -518,16 +510,16 @@ void (async () => {
       }
 
       if (settings.mode === "entertainment") {
+        // Let the current video finish naturally. The onEnded callback
+        // will see blockNextContent=true and hide the overlay at that point.
+        // No need to set pendingHide or hide immediately.
         if (videoFinished) {
-          // Video already ended — hide immediately.
+          // Video already ended — hide now.
           overlayVisible = false;
           overlay.hideAll();
           updateBadgeState();
-        } else {
-          // Let the current video finish before hiding.
-          // The onEnded callback checks blockNextContent and will hideAll.
-          pendingHide = true;
         }
+        // Otherwise the video is still playing — just wait for onEnded.
       } else {
         // Let the current education card finish its own TTL.
         if (!overlayVisible || activeCardTtlMs <= 0) {

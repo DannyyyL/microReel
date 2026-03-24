@@ -81,7 +81,9 @@ stopOnDoneEl.addEventListener("change", () => {
       ...settings,
       stopOnHostDone: stopOnDoneEl.checked
     },
-    stopOnDoneEl.checked ? "Stops as soon as the host finishes" : "Lets content finish naturally"
+    stopOnDoneEl.checked
+      ? "MicroReel now stops as soon as the host finishes"
+      : "Lets content finish naturally"
   );
 });
 
