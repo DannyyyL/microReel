@@ -215,8 +215,8 @@ export function App(): JSX.Element {
                   }))
                 }
               >
-                <option value="education">Education (tips and cards)</option>
                 <option value="entertainment">Entertainment (videos)</option>
+                <option value="education" disabled>Education (Coming Soon)</option>
               </select>
             </label>
 

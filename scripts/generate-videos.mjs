@@ -12,7 +12,17 @@ const SEARCH_QUERIES = [
   "#shorts which room",
   "#shorts funny clips"
 ];
-const MAX_RESULTS_PER_QUERY = 5;
+const MAX_RESULTS_PER_QUERY = 25; // Increased to ensure enough videos pass the duration filter
+const TARGET_MAX_DURATION_SECONDS = 20; // Filter to ~15-20 second max length
+
+function parseDurationToSeconds(duration) {
+  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!match) return 0;
+  const h = parseInt(match[1] || '0', 10);
+  const m = parseInt(match[2] || '0', 10);
+  const s = parseInt(match[3] || '0', 10);
+  return h * 3600 + m * 60 + s;
+}
 
 async function fetchShorts() {
   if (!API_KEY) {
@@ -46,15 +56,39 @@ async function fetchShorts() {
       }
 
       const data = await res.json();
+      const items = data.items || [];
+      if (items.length === 0) continue;
       
-      for (const item of data.items || []) {
-        const videoId = item.id?.videoId;
-        if (!videoId || seenIds.has(videoId)) continue;
+      const searchIds = items.map(item => item.id?.videoId).filter(Boolean);
+      
+      // Pass 2: Fetch precise duration details
+      const detailsUrl = new URL("https://www.googleapis.com/youtube/v3/videos");
+      detailsUrl.searchParams.set("part", "contentDetails,snippet");
+      detailsUrl.searchParams.set("id", searchIds.join(","));
+      detailsUrl.searchParams.set("key", API_KEY);
+
+      const detailsRes = await fetch(detailsUrl.toString());
+      if (!detailsRes.ok) {
+        console.error(`Failed to fetch details for query "${query}"`);
+        continue;
+      }
+
+      const detailsData = await detailsRes.json();
+      
+      for (const video of detailsData.items || []) {
+        const videoId = video.id;
+        const durationStr = video.contentDetails?.duration || "";
+        const durationSec = parseDurationToSeconds(durationStr);
+
+        // Filter: skip if it's too long, 0s (erroneous), or already seen
+        if (durationSec === 0 || durationSec > TARGET_MAX_DURATION_SECONDS || seenIds.has(videoId)) {
+          continue;
+        }
 
         seenIds.add(videoId);
         allVideos.push({
           id: `short-${videoId}`,
-          title: item.snippet?.title || "YouTube Short",
+          title: video.snippet?.title || "YouTube Short",
           youtubeId: videoId,
           ttlMs: 30000 // default 30 seconds
         });

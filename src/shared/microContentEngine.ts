@@ -47,15 +47,19 @@ export class MicroContentEngine {
   private pickCard(input: EngineInput): MicroCard {
     const candidates = cards.filter((card) => !this.recentIds.has(card.id));
     const pool = candidates.length > 0 ? candidates : cards;
-    const index = Math.floor(this.random() * pool.length);
-    const selected = pool[index];
+    const relevantPool = pool.filter((card) => {
+      const hostMatches = !card.hosts || card.hosts.length === 0 || card.hosts.includes(input.host);
+      const minElapsedOk = card.minElapsedMs === undefined || input.elapsedMs >= card.minElapsedMs;
+      const maxElapsedOk = card.maxElapsedMs === undefined || input.elapsedMs <= card.maxElapsedMs;
+      return hostMatches && minElapsedOk && maxElapsedOk;
+    });
+    const source = relevantPool.length > 0 ? relevantPool : pool;
+    const index = Math.floor(this.random() * source.length);
+    const selected = source[index];
 
     this.trackRecent(selected.id);
 
-    return {
-      ...selected,
-      ttlMs: Math.max(selected.ttlMs, input.elapsedMs > 20_000 ? 8_000 : selected.ttlMs)
-    };
+    return selected;
   }
 
   private pickVideo(): VideoCard {

@@ -98,10 +98,8 @@ export class OverlayRenderer {
         opacity: 1;
         pointer-events: auto;
         box-shadow:
-          0 0 0 1px rgba(${BRAND_INDIGO_RGB}, 0.45),
-          0 0 0 4px rgba(${BRAND_INDIGO_RGB}, 0.12),
-          0 12px 42px rgba(${BRAND_INDIGO_RGB}, 0.24),
-          0 8px 40px rgba(0, 0, 0, 0.45);
+          0 0 0 1px rgba(255, 255, 255, 0.1),
+          0 10px 30px rgba(0, 0, 0, 0.5);
       }
       .wrap.side-right {
         top: 50%;
@@ -262,10 +260,8 @@ export class OverlayRenderer {
         pointer-events: none;
         background: #000;
         position: relative;
-        border: 1px solid rgba(${BRAND_INDIGO_RGB}, 0.42);
-        box-shadow:
-          inset 0 0 0 1px rgba(${BRAND_INDIGO_RGB}, 0.16),
-          0 0 28px rgba(${BRAND_INDIGO_RGB}, 0.18);
+        border: 2px solid #2a2a2a;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
       }
       .video-wrap.visible {
         opacity: 1;
@@ -340,6 +336,24 @@ export class OverlayRenderer {
     resizeHandle.className = "resize-handle";
 
     this.wrap.append(dragHandle, this.cardEl, this.videoWrap, resizeHandle);
+
+    const releaseIframeHover = () => {
+      // Blur iframe focus so YouTube drops hover/keyboard UI state as quickly as possible.
+      this.videoIframe.blur();
+      window.focus();
+      // Keep interaction disabled until an explicit re-entry into the overlay.
+      this.videoIframe.style.pointerEvents = "none";
+    };
+
+    const resumeIframeHover = () => {
+      this.videoIframe.style.pointerEvents = "auto";
+    };
+
+    this.wrap.addEventListener("pointerleave", releaseIframeHover);
+    this.wrap.addEventListener("mouseleave", releaseIframeHover);
+    this.wrap.addEventListener("pointerenter", resumeIframeHover);
+    this.wrap.addEventListener("mouseenter", resumeIframeHover);
+
     this.shadowRoot.append(style, this.wrap);
 
     this.messageHandler = (event: MessageEvent) => {

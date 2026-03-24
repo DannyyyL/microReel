@@ -11,6 +11,11 @@ export interface MicroCard {
   title: string;
   body: string;
   cta?: string;
+  /** Optional host targeting for relevance. Omit to allow all hosts. */
+  hosts?: HostName[];
+  /** Optional generation-elapsed bounds for contextual card relevance. */
+  minElapsedMs?: number;
+  maxElapsedMs?: number;
   ttlMs: number;
 }
 

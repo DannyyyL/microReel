@@ -29,6 +29,31 @@ test("education mode keeps the configured ttl when it already exceeds the minimu
   assert.equal(result.card.ttlMs, cards[0].ttlMs);
 });
 
+test("education mode only serves cards relevant to the active host", () => {
+  const engine = new MicroContentEngine(videos, () => 0);
+
+  for (let index = 0; index < 10; index += 1) {
+    const result = engine.next({ host: "gemini", elapsedMs: 5_000 }, "education");
+    assert.equal(result.kind, "card");
+    const hosts = result.card.hosts;
+    assert.ok(!hosts || hosts.includes("gemini"));
+  }
+});
+
+test("education mode respects elapsed-time card constraints", () => {
+  const engine = new MicroContentEngine(videos, () => 0);
+
+  const early = engine.next({ host: "chatgpt", elapsedMs: 5_000 }, "education");
+  assert.equal(early.kind, "card");
+  assert.ok(early.card.minElapsedMs === undefined || 5_000 >= early.card.minElapsedMs);
+  assert.ok(early.card.maxElapsedMs === undefined || 5_000 <= early.card.maxElapsedMs);
+
+  const late = engine.next({ host: "chatgpt", elapsedMs: 30_000 }, "education");
+  assert.equal(late.kind, "card");
+  assert.ok(late.card.minElapsedMs === undefined || 30_000 >= late.card.minElapsedMs);
+  assert.ok(late.card.maxElapsedMs === undefined || 30_000 <= late.card.maxElapsedMs);
+});
+
 test("entertainment mode rotates through videos before repeating", () => {
   const engine = new MicroContentEngine(videos, () => 0);
   const seen = new Set<string>();

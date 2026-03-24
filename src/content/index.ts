@@ -40,11 +40,13 @@ void (async () => {
 
   let settings = settings0;
   let startTimer: number | null = null;
-  let rotationTimer: number | null = null;
+  let contentTimer: number | null = null;
   let generationStartedAt = 0;
   let contextAlive = true;
   let pendingHide = false;
   let videoFinished = false;
+  let activeCardShownAt = 0;
+  let activeCardTtlMs = 0;
   let activeGenerationCount = 0;   // incremented per prompt, decremented on stop
   let preloadedResult: import("../shared/microContentEngine").EngineResult | null = null;
   let userManuallyClosed = false;
@@ -245,11 +247,33 @@ void (async () => {
       window.clearTimeout(startTimer);
       startTimer = null;
     }
-    if (rotationTimer !== null) {
-      window.clearInterval(rotationTimer);
-      rotationTimer = null;
+    if (contentTimer !== null) {
+      window.clearTimeout(contentTimer);
+      contentTimer = null;
     }
     preloadedResult = null;
+  }
+
+  function scheduleNextCardAfter(delayMs: number): void {
+    if (contentTimer !== null) {
+      window.clearTimeout(contentTimer);
+    }
+    contentTimer = window.setTimeout(() => {
+      contentTimer = null;
+      showNextContent();
+    }, delayMs);
+  }
+
+  function scheduleCardHideAfter(delayMs: number): void {
+    if (contentTimer !== null) {
+      window.clearTimeout(contentTimer);
+    }
+    contentTimer = window.setTimeout(() => {
+      contentTimer = null;
+      overlayVisible = false;
+      overlay.hideAll();
+      updateBadgeState();
+    }, delayMs);
   }
 
   /**
@@ -263,8 +287,8 @@ void (async () => {
     }
   }
 
-  function showNextContent(): void {
-    if (!contextAlive || userManuallyClosed || blockNextContent) {
+  function showNextContent(force = false): void {
+    if (!contextAlive || userManuallyClosed || (!force && blockNextContent)) {
       return;
     }
 
@@ -332,7 +356,12 @@ void (async () => {
     } else {
       overlayVisible = true;
       overlay.show(result.card);
+      activeCardShownAt = Date.now();
+      activeCardTtlMs = Math.max(1_000, result.card.ttlMs || settings.rotationMs);
       updateBadgeState();
+      if (!blockNextContent && activeGenerationCount > 0) {
+        scheduleNextCardAfter(activeCardTtlMs);
+      }
     }
   }
 
@@ -433,11 +462,6 @@ void (async () => {
 
       startTimer = window.setTimeout(() => {
         showNextContent();
-        // Only rotate on a timer for cards — videos chain via their onEnded
-        // callback, so the rotation timer would cut them off mid-playback.
-        if (settings.mode !== "entertainment") {
-          rotationTimer = window.setInterval(showNextContent, settings.rotationMs);
-        }
       }, settings.startDelayMs);
     },
     onGeneratingStop() {
@@ -469,17 +493,18 @@ void (async () => {
       if (overlayNeverShown) {
         // Generation was shorter than startDelayMs — show content now,
         // then let it finish naturally before hiding.
+        if (settings.stopOnHostDone) {
+          overlayVisible = false;
+          overlay.hideAll();
+          updateBadgeState();
+          return;
+        }
+
         preloadedResult = savedPreload;
-        showNextContent();
-        // blockNextContent is already true, so the onEnded callback will hide.
+        showNextContent(true);
+        // blockNextContent is already true, so videos hide on onEnded.
         if (settings.mode !== "entertainment") {
-          // Show the card for one rotation cycle, then hide.
-          rotationTimer = window.setTimeout(() => {
-            rotationTimer = null;
-            overlayVisible = false;
-            overlay.hideAll();
-            updateBadgeState();
-          }, settings.rotationMs);
+          scheduleCardHideAfter(activeCardTtlMs || settings.rotationMs);
         }
         return;
       }
@@ -504,9 +529,22 @@ void (async () => {
           pendingHide = true;
         }
       } else {
-        overlayVisible = false;
-        overlay.hideAll();
-        updateBadgeState();
+        // Let the current education card finish its own TTL.
+        if (!overlayVisible || activeCardTtlMs <= 0) {
+          overlayVisible = false;
+          overlay.hideAll();
+          updateBadgeState();
+        } else {
+          const elapsed = Date.now() - activeCardShownAt;
+          const remaining = Math.max(0, activeCardTtlMs - elapsed);
+          if (remaining === 0) {
+            overlayVisible = false;
+            overlay.hideAll();
+            updateBadgeState();
+          } else {
+            scheduleCardHideAfter(remaining);
+          }
+        }
       }
 
       // Re-preload for the next generation cycle.
