@@ -32,21 +32,10 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Create Pull Request
-        id: cpr
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore: refresh videos list"
-          title: "chore: automated videos refresh"
-          body: "Automated update of videos list"
-          branch: "bot/videos-refresh"
-          delete-branch: true
-
-      - name: Enable Pull Request Automerge
-        if: steps.cpr.outputs.pull-request-operation == 'created'
-        uses: peter-evans/enable-pull-request-automerge@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
-          merge-method: squash
+      - name: Commit and Push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add content/videos.json
+          # Only commit and push if there are changes
+          git diff --staged --quiet || (git commit -m "chore: automated videos refresh" && git push)
