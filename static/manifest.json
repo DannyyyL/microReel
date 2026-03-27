@@ -1,13 +1,24 @@
 {
   "manifest_version": 3,
   "name": "MicroReel",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "YT Shorts while AI is generating.",
   "permissions": [
     "activeTab",
     "tabs",
-    "storage"
+    "storage",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess"
   ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "rules",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
