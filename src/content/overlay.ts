@@ -729,12 +729,13 @@ export class OverlayRenderer {
       FULL_LOAD_NUDGES_MS.forEach((delay) => {
         this.playNudgeTimers.push(window.setTimeout(() => this.nudgePlay(), delay));
       });
-      this.playNudgeTimers.push(window.setTimeout(() => {
-        if (!this.videoStarted) {
-          this.triggerUnavailable();
-        }
-      }, VIDEO_STARTED_GUARD_MS));
     }
+
+    this.playNudgeTimers.push(window.setTimeout(() => {
+      if (!this.videoStarted) {
+        this.triggerUnavailable();
+      }
+    }, VIDEO_STARTED_GUARD_MS));
 
     this.videoWrap.classList.add("visible");
     this.wrap.classList.add("has-content");
